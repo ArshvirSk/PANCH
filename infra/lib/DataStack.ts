@@ -4,6 +4,10 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
+import * as path from 'path';
 
 export class DataStack extends cdk.Stack {
   public readonly casesTable: dynamodb.Table;
@@ -97,7 +101,22 @@ export class DataStack extends cdk.Stack {
       autoDeleteObjects: true,
     });
 
-    // 4. SSM Parameters for Names
+    // 4. S3 Event Lambda
+    const processEvidenceLambda = new nodejs.NodejsFunction(this, 'ProcessEvidenceHandler', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'handler',
+      entry: path.join(__dirname, '../../services/api/processEvidence.ts'),
+      environment: { EVIDENCE_TABLE: this.evidenceTable.tableName }
+    });
+    this.evidenceTable.grantReadWriteData(processEvidenceLambda);
+    this.evidenceBucket.grantRead(processEvidenceLambda);
+    
+    this.evidenceBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(processEvidenceLambda)
+    );
+
+    // 5. SSM Parameters for Names
     new ssm.StringParameter(this, 'CasesTableNameParam', { parameterName: '/panch/data/tables/cases', stringValue: this.casesTable.tableName });
     new ssm.StringParameter(this, 'EvidenceTableNameParam', { parameterName: '/panch/data/tables/evidence', stringValue: this.evidenceTable.tableName });
     new ssm.StringParameter(this, 'RulingsTableNameParam', { parameterName: '/panch/data/tables/rulings', stringValue: this.rulingsTable.tableName });

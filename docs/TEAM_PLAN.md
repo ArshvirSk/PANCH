@@ -1,28 +1,33 @@
 # TEAM_PLAN.md: Panch Hackathon Plan
 
-**Team Size:** 3 Members  
-**Duration:** 14 Days (until deadline)  
-**Effort:** ~4-6 hours per day per member  
+**Team Size:** 3 Members
+**Duration:** 3 Days (compressed timeline — replaces the earlier 14-day Phases 1-6)
+**Effort:** Full days, paste-one-prompt-at-a-time execution, deploy and check before moving on
+
+> This plan supersedes the original 14-day phase breakdown. See `Arshvir_prompts.md` (3-day prompts) for the exact prompts run each day. Ownership, contracts, and the cut list below carry over unchanged.
 
 ## 1. Ownership Map
 
-Each directory is strictly owned by one member. No directory has two owners. 
+Each directory is strictly owned by one member. No directory has two owners.
 
-| Member | Strengths | Directory Ownership | Responsibilities |
-| :--- | :--- | :--- | :--- |
-| **Arshvir** | AWS, Backend, DevOps | `/infra`, `/services/api`, `/services/shared` | CDK stacks, API Gateway, DynamoDB ledger, Lambda handlers, shared types |
-| **Rutu** | AI/ML, Prompting, Data | `/services/tribunal`, `/bench` | Step Functions logic, Bedrock prompts, guardrails, Textract, benchmarking |
-| **Piyush** | Frontend, Design, Writing | `/web`, `/docs` | Next.js App, Amplify, UI/UX, documentation, PRD updates, pitch video |
+| Member      | Strengths                 | Directory Ownership                           | Responsibilities                                                                                                        |
+| :---------- | :------------------------ | :-------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
+| **Arshvir** | AWS, Backend, DevOps      | `/infra`, `/services/api`, `/services/shared` | CDK stacks (Data, Auth, Api, Web, Workflow, Obs), API Gateway, DynamoDB ledger, Lambda handlers, shared types/contracts |
+| **Rutu**    | AI/ML, Prompting, Data    | `/services/tribunal`, `/bench`                | Step Functions handler logic, Bedrock prompts, Guardrail config, demo cases, fallback rulings                           |
+| **Piyush**  | Frontend, Design, Writing | `/web`, `/docs`                               | Next.js app, Amplify hosting (GitHub-connected), UI/UX, documentation                                                   |
 
-**Rule for Shared Files:** `services/shared` (types, schemas, ledger logic) is owned by **Arshvir**. Rutu and Piyush must submit a PR and wait for Arshvir's review to change any shared contract.
+**Rule for Shared Files:** `services/shared` (types, schemas, ledger logic, handler I/O contracts) is owned by **Arshvir**. Rutu and Piyush must submit a PR and wait for Arshvir's review to change any shared contract.
+
+**Deploy Rule:** Only **Arshvir** runs `cdk deploy`. Always deploy from `main` after merging — Day 1 is the exception, where deploying from Arshvir's branch to get the public URL live is allowed, followed immediately by a merge to `main`.
 
 ---
 
 ## 2. Contracts to Freeze on Day 1
 
-Before writing logic, the team must agree on these exact interfaces so everyone can build against mocks.
+Before Rutu and Piyush build against the real system, these interfaces are frozen so everyone can build against mocks/fixtures.
 
 ### A. Judge JSON Schema (Bedrock Output)
+
 ```json
 {
   "findingsOfFact": [{ "fact": "string", "evidenceIds": ["string"] }],
@@ -34,154 +39,139 @@ Before writing logic, the team must agree on these exact interfaces so everyone 
 }
 ```
 
-### B. API Request/Response Shapes
+### B. Step Functions Task Contracts (services/shared, Day 1 step 6)
+
+Typed input/output for every task: `intake`, `blind`, `judge` (input: judge name + blinded case file; output: `judgeOutput`), `crossExam`, `swapTest`, `aggregate`, `presiding`, `publish`, `settle`, `notify`. One fixture input for a full execution, documented in `docs/CONTRACTS.md`. A shared helper reads model config from SSM and wraps model invocation — Rutu's handlers must use it for every Bedrock call.
+
+### C. API Request/Response Shapes
+
 - **POST `/cases`**
   - Req: `{ "claimantEmail": "a@x.com", "respondentEmail": "b@y.com", "amountCents": 40000, "currency": "USD" }`
   - Res: `{ "caseId": "c-123", "status": "CREATED" }`
 - **POST `/cases/{id}/evidence`**
   - Req: `{ "party": "claimant", "type": "chat_log", "contentType": "image/png" }`
-  - Res: `{ "evidenceId": "e-456", "uploadUrl": "https://s3.aws.com/..." }`
+  - Res: `{ "evidenceId": "e-456", "uploadUrl": "https://s3.aws.com/..." }` (5-minute expiry, size/content-type limits)
+- **GET `/cases/{id}`** → status + current stage + timestamps (frozen timeline shape, from `DescribeExecution`)
+- **GET `/rulings/{id}`** → ruling JSON/markdown, no raw evidence or PII
+- **GET `/rulings/{id}/verify`** → `{ match, computedHash, storedHash, ledgerEntryHash }`
+- **POST `/demo/run`** → no auth; creates + funds + disputes + submits a seeded demo case; returns `caseId`; rate-limited (API Gateway throttle + DynamoDB daily cap, default 30/day)
 
-### C. DynamoDB Item Shapes
+### D. DynamoDB Item Shapes
+
 - **Cases:** `PK: caseId`, `status`, `claimantId`, `respondentId`, `amountCents`, `evidenceDeadline`, `executionArn`
 - **Evidence:** `PK: caseId`, `SK: evidenceId`, `party`, `s3Key`, `sha256`, `guardrailFlags`
+- Tables: `Cases`, `Evidence`, `Rulings`, `Ledger`, `BenchCases`, `BenchRuns` — on-demand, PITR on, names published via SSM
 
-### D. Ledger States (Simulated Escrow)
+### E. Ledger States (Simulated Escrow)
+
 - Valid `event` states: `FUND`, `DISPUTE`, `RESOLVE`, `RELEASE`
-- Hash chain: `entryHash = sha256(prevHash + event + amount + caseId)`
+- Case state machine: `CREATED → FUNDED → DISPUTED → RESOLVED → SETTLED`; double-resolve and illegal transitions rejected
+- Hash chain: `entryHash = sha256(prevHash + event + amountCents + caseId)`, written via `TransactWriteItems` with a conditional check on `Cases.status`
 
-### E. S3 Key Layout
+### F. S3 Key Layout
+
 - **Evidence:** `panch-evidence/{caseId}/{evidenceId}`
 - **Extracted Text:** `panch-evidence/{caseId}/extracted/{evidenceId}.txt`
-- **Rulings:** `panch-rulings/{caseId}/ruling.json`
+- **Rulings:** `panch-rulings/{caseId}/ruling.json` (served via CloudFront with OAC)
+- **Benchmark/demo:** `bench/demo` (Rutu: 3 pre-seeded demo cases + cached fallback rulings)
 
-### F. SSM Parameter Names
-- `/panch/models/judge-1`
-- `/panch/models/judge-2`
-- `/panch/models/judge-3`
-- `/panch/models/presiding`
+### G. SSM Parameter Names
 
----
-
-## 3. Task List per Member, by Phase
-
-### Phase 1: Skeleton & Auth (Days 1-2)
-| Member | Task | Files Touched | Dependencies | Priority | Hours |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Arshvir** | CDK Skeleton, AuthStack (Cognito), DataStack (DynamoDB, S3) | `/infra/stacks/*.ts`, `/infra/cdk.json` | None | P0 | 6 |
-| **Rutu** | Synthetic Data Archetypes & Contract Templates | `/bench/archetypes/` | None | P0 | 4 |
-| **Piyush** | Next.js setup, Amplify deploy config, basic landing page | `/web/app/*`, `/web/next.config.js` | None | P0 | 6 |
-
-### Phase 2: Data & API (Days 3-4)
-| Member | Task | Files Touched | Dependencies | Priority | Hours |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Arshvir** | ApiStack, `/cases` endpoints, Ledger transactions | `/infra/ApiStack.ts`, `/services/api/` | None | P0 | 8 |
-| **Rutu** | Textract Intake Lambda, Guardrails setup | `/services/tribunal/intake/`, `/infra/WorkflowStack.ts` | Arshvir (DataStack) | P0 | 6 |
-| **Piyush** | Mock API hooks, Deal creation UI, Timeline UI shell | `/web/components/`, `/web/lib/api.ts` | None (use mocks) | P0 | 8 |
-
-### Phase 3: Tribunal Workflow & Bench (Days 5-8)
-| Member | Task | Files Touched | Dependencies | Priority | Hours |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Arshvir** | Step Functions orchestration wrapper, execution polling | `/infra/WorkflowStack.ts`, `/services/api/cases.ts` | None | P0 | 6 |
-| **Rutu** | 3 Judges, Cross-Exam, Swap Test, Presiding Synthesis logic | `/services/tribunal/judges/`, `/bench/run.ts` | None | P0 | 12 |
-| **Piyush** | Evidence Upload UI, Ruling Gallery, `docs/TEAM_PLAN.md` updates | `/web/app/ruling/`, `/web/app/evidence/` | Arshvir (API) | P0 | 8 |
-
-### Phase 4: Frontend Integration (Days 9-11)
-| Member | Task | Files Touched | Dependencies | Priority | Hours |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Arshvir** | API <> Tribunal wiring, Hash verification endpoint | `/services/api/` | Rutu (Tribunal) | P0 | 5 |
-| **Rutu** | Bias-eval dashboard generation, Benchmark execution | `/bench/` | None | P1 | 6 |
-| **Piyush** | Live timeline polling, End-to-end UX flow polish | `/web/components/Timeline.tsx` | Arshvir (API) | P0 | 10 |
-
-### Phase 5: Evaluation & Polish (Days 12-13)
-| Member | Task | Files Touched | Dependencies | Priority | Hours |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Arshvir** | Cost/token tracking per case, CloudWatch dashboard | `/infra/ObsStack.ts`, `/services/tribunal/` | None | P1 | 4 |
-| **Rutu** | 3 Scripted Demo Cases for `/demo/run` | `/bench/demo-cases/` | None | P0 | 5 |
-| **Piyush** | Demo video recording, Builder Center writeup, Pitch slides | `/docs/` | Rutu (Demo cases) | P0 | 8 |
-
-### Phase 6: Stretch & Submission (Day 14)
-| Member | Task | Files Touched | Dependencies | Priority | Hours |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Arshvir** | (P2) Solidity Escrow | `/contracts/ArbiterEscrow.sol` | None | P2 | 4 |
-| **Rutu** | Final bias-eval report generation | `/docs/bias-eval.md` | None | P1 | 2 |
-| **Piyush** | Final ship-gate verification (logged out) | None | All (Code freeze) | P0 | 2 |
+- `/panch/models/judge-1`, `/panch/models/judge-2`, `/panch/models/judge-3`, `/panch/models/presiding`
+- `/panch/config/max-crossexam-rounds`
 
 ---
 
-## 4. Day-by-Day Schedule
+## 3. Day-by-Day Plan
 
-| Day | Arshvir (Backend/AWS) | Rutu (AI/Data) | Piyush (Web/Docs) | Checkpoints |
-| :--- | :--- | :--- | :--- | :--- |
-| **1** | AWS Account Setup, IAM, CDK Skeleton | Model access, Guardrails config | Next.js Init, GitHub setup | **Code Contracts Frozen** |
-| **2** | Cognito AuthStack, S3 & DynamoDB | Contract Templates, Archetypes | Amplify Deploy, Landing Page | Web & Auth live |
-| **3** | Create Case API, Escrow Ledger | Textract Intake lambda | API mock wiring, Deal UI | |
-| **4** | Upload Evidence API | Bench generation script | Evidence Upload UI | |
-| **5** | Step Functions Workflow Shell | 3 Bedrock Judges logic | Ruling Page UI shell | |
-| **6** | Step Functions Wiring | Cross-exam & Swap Test | Timeline UI shell | **Checkpoint 1: Upload to S3 works** |
-| **7** | Ledger conditional writes | Presiding Judge synthesis | Bias-eval Dashboard UI | |
-| **8** | API Polling for execution | Gold label verification | Polish Evidence UI | |
-| **9** | Hash verification API | Refine prompts & error handling | Live Timeline polling | **Checkpoint 2: Mock Tribunal runs** |
-| **10** | Fix API/Ledger edge cases | Run synthetic benchmark | End-to-end Deal to Ruling flow | |
-| **11** | SES/SNS notifications (P1) | Analyze benchmark results | `demo/run` button implementation | |
-| **12** | CloudWatch Alarms & ObsStack | Craft 3 Scripted Demo Cases | Demo video recording | **Checkpoint 3: End-to-End `demo/run`** |
-| **13** | Code Review & Security pass | Bias Eval slide | Builder Center Page, README | |
-| **14** | Submit. (Stretch: Solidity testnet) | Submit. | Logged-out Ship-Gate test | **Feature Freeze / Submission** |
+Run one prompt per day (`Arshvir_prompts.md`), deploy, and check before moving on. Log each session in `docs/dev-process/LOG.md`.
+
+### Day 1: Foundation, API, ledger, live URL
+
+**Owner: Arshvir** (branch `a/feat/day1-infra`)
+
+| Track        | Work                                                                                                                                                                                                       |
+| :----------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Infra        | DataStack (tables + KMS + S3, SSM names), AuthStack (Cognito, public routes unauthenticated), ApiStack (API Gateway + CORS + `/health` + Cognito authorizer), WebStack (Amplify Hosting, GitHub-connected) |
+| Contracts    | Shared Step Functions task contracts + fixture + `docs/CONTRACTS.md` (unblocks Rutu)                                                                                                                       |
+| API & Ledger | Ledger hash-chain library, `POST /cases`, `/fund`, `/dispute`, `/evidence` (presigned upload), `/respond`, `/submit`, `GET /cases/{id}`; stubbed public routes from fixtures; least-privilege IAM          |
+| Tests        | Every ledger transition, double-resolve, hash chain integrity, presigned URL constraints; integration script against the deployed API                                                                      |
+
+**Checkpoint:** `cdk deploy --all` run, smoke test passing, public URL live and never broken after this point. PR opened, LOG.md updated. Message sent to Rutu (contracts ready) and Piyush (mock server + real API URL, Amplify GitHub connection).
+
+### Day 2: Workflow wiring, demo, verification
+
+**Owner: Arshvir** (WorkflowStack), **depends on Rutu's handlers in `/services/tribunal`** (branch `a/feat/day2-workflow`)
+
+| Track          | Work                                                                                                                                                                                                                    |
+| :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflow       | Tribunal Standard state machine: Intake (Map) → Blind → Judges (Parallel, 3) → Cross-exam (1 round) → Swap test → Aggregate → Route (Choice) → Presiding → Publish → Settle                                             |
+| Guardrails/IAM | Bedrock Guardrail from Rutu's config; IAM scoped to model ARNs from SSM (inference profile + foundation model); retries with backoff on throttling; Catch path → `FAILED` + cached fallback ruling for demo cases       |
+| API wiring     | `POST /cases/{id}/submit` → `StartExecution`; `GET /cases/{id}` returns stage/timestamps; Settle appends `RESOLVE`+`RELEASE`; `POST /demo/run` (rate-limited); `GET /rulings/{id}`, `/verify`, and list, via CloudFront |
+| Tests          | Mocked handlers: happy path, escalation path, failure path                                                                                                                                                              |
+
+**Checkpoint:** `/demo/run` runs end-to-end against fixture handlers, PR opened, LOG.md updated. Rutu given a CLI one-liner to start executions without being blocked on the API.
+
+### Day 3: Harden, observe, freeze
+
+**Owner: Arshvir** (branch `a/feat/day3-harden`) — **feature freeze on new functionality**
+
+| Track      | Work                                                                                                                                                                                                                                                                         |
+| :--------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cost & Obs | Per-case Bedrock token counts → `costUsd` from an SSM price table; minimal ObsStack (one dashboard: executions, failures, stage durations, throttles, tokens, `/demo/run` count, API 5xx) + alarms; X-Ray on                                                                 |
+| Security   | Least-privilege IAM review, no public buckets, SSE-KMS everywhere, no secrets in repo, Guardrails before every judge call, presigned URL limits — write short `docs/SECURITY.md`                                                                                             |
+| Edge cases | Duplicate submit, evidence after deadline, respondent never responds, retry after `FAILED`                                                                                                                                                                                   |
+| Ship-gate  | Fresh checkout (`npm ci`, `cdk synth`, clean deploy) from `main`; 3x logged-out `/demo/run` to verified ruling for all 3 demo cases with confirmed fallbacks; README/TRD updated where implementation differs; list anything that could fail the ship gate with a mitigation |
+
+**Checkpoint:** Final report + LOG.md entry. Submission-ready.
 
 ---
 
-## 5. Git Workflow
+## 4. Git Workflow
 
-- **Branch Naming:** `<initial>/<type>/<ticket-or-feature>` (e.g., `a/feat/dynamo-ledger`, `r/fix/cross-exam-prompt`, `p/ui/landing-page`).
-- **PR Rules:** All changes require a Pull Request to `main`. At least 1 approval is required from a teammate.
-- **Main Branch:** Protected. Merges to `main` are handled by **Arshvir** (as DevOps lead) after review.
-- **CDK Stack Conflicts:** 
-  - One owner per stack (Arshvir owns Infra).
-  - **Deploy Rule:** Only **Arshvir** runs `cdk deploy` against the `main` environment. Rutu and Piyush run `npm run dev` locally or test against the cloud environment after Arshvir deploys.
+- **Branch Naming:** `<initial>/<type>/<ticket-or-feature>` (e.g., `a/feat/day1-infra`, `r/fix/cross-exam-prompt`, `p/ui/landing-page`).
+- **PR Rules:** All changes require a Pull Request to `main`. Arshvir merges every PR.
+- **Main Branch:** Protected. Only **Arshvir** deploys against the `main` environment.
+- **Deploy Rule:** Only Arshvir runs `cdk deploy`. Rutu and Piyush test locally or against the deployed environment after Arshvir deploys (Day 1 exception: Arshvir may deploy from his branch first to get the URL live, then merges immediately).
 
 ---
 
-## 6. AWS Access Plan
+## 5. AWS Access Plan
 
-- **Account Holder:** **Arshvir** owns the root account and billing.
-- **Team Access:** Arshvir sets up AWS IAM Identity Center (SSO) and creates restricted IAM roles for Rutu and Piyush.
+- **Account Holder:** **Arshvir** — account `890742603792`, region `us-east-1`, profile `panch`, owns root account and billing.
 - **Rutu's Role:** Bedrock, S3, Textract, CloudWatch read/invoke access.
-- **Piyush's Role:** Amplify, API Gateway read access (primarily uses the deployed endpoints).
-- **Deployment:** **Arshvir** is the only one who runs `cdk deploy --all` to prevent state lock conflicts and drift.
+- **Piyush's Role:** Amplify, API Gateway read access (primarily uses deployed endpoints).
+- **Deployment:** **Arshvir** is the only one who runs `cdk deploy --all`, to prevent state lock conflicts and drift.
 
 ---
 
-## 7. Hackathon-Specific Tasks (Owners & Deadlines)
+## 6. Cut List (in order, if behind schedule)
 
-| Task | Owner | Deadline |
-| :--- | :--- | :--- |
-| Coding Agent Connection Proof (All 3 members must log in `LOG.md`) | Arshvir (lead) | Day 2 |
-| AWS Budgets Alert | Arshvir | Day 1 |
-| Demo Video (3 mins) | Piyush | Day 13 |
-| Bias-Eval Results Publish | Rutu | Day 13 |
-| Builder Center Project Page | Piyush | Day 13 |
-| Category (`#commercial-potential`) & Lane (`#startup`) Tags | Piyush | Day 14 |
-| Final Logged-Out Ship-Gate Test | Piyush | Day 14 |
-
----
-
-## 8. Risks and Blockers
-
-| Risk | Mitigation / Fallback |
-| :--- | :--- |
-| **Tribunal waiting on API:** Rutu needs to test Step Functions, but Arshvir hasn't finished the API. | Rutu triggers Step Functions directly via AWS Console/CLI using frozen JSON mock inputs. |
-| **Frontend waiting on Tribunal:** Piyush needs to build the timeline, but Step Functions isn't ready. | Piyush uses a hardcoded `/cases/{id}` mock API response that slowly advances through states over time. |
-| **Bedrock Quotas/Throttling:** Rutu hits rate limits running the 50-case benchmark. | Arshvir requests quota increase Day 1. Rutu builds a script with exponential backoff and limits concurrent executions. |
-| **Frontend waiting on Auth:** Piyush needs to test login. | Arshvir deploys AuthStack first. Piyush builds a "demo mode" guest fallback. |
+1. Solidity contract escrow
+2. Human review queue (always auto-resolve or fail gracefully)
+3. Appeal window (settle immediately in all modes)
+4. SES email notifications (assume users poll the timeline)
+5. WAF
+6. Canary
+7. Benchmark beyond 10 cases
+8. Cross-examination round 2 (limit to 1 round)
 
 ---
 
-## 9. Cut List (If behind schedule)
+## 7. Risks and Blockers
 
-If we fall behind, features will be dropped in this strict order to preserve the P0 Ship-Gate:
-1. **P2: Solidity Escrow** (Never start this until everything else is 100% done).
-2. **P1: Human Review Queue** (Always auto-resolve or fail gracefully).
-3. **P1: Appeal Window** (Settle immediately in all modes).
-4. **P1: Email Notifications (SES)** (Assume users poll the timeline).
-5. **P1: Bias-Eval Dashboard UI** (Fallback: generate a markdown report via CLI instead of a UI dashboard).
-6. **P0 (Partial): Cross-Examination Round 2** (Limit cross-exam to 1 round to save time/latency).
+| Risk                                                                                                | Mitigation / Fallback                                                                                                   |
+| :-------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
+| **Tribunal waiting on API:** Rutu needs to test Step Functions before the API is ready.             | Rutu triggers executions directly via CLI using the frozen fixture input (Day 1 deliverable to Rutu).                   |
+| **Frontend waiting on Tribunal:** Piyush needs to build the timeline before Step Functions is live. | Piyush uses the mock server against frozen `/cases/{id}` response shapes until the real API URL is sent (end of Day 1). |
+| **Bedrock quotas/throttling:** Rutu hits rate limits.                                               | Backoff + retry built into WorkflowStack (Day 2); demo cases fall back to cached rulings on `FAILED`.                   |
+| **Frontend waiting on Auth:** Piyush needs to test login.                                           | AuthStack deployed Day 1; public routes stay unauthenticated so demo mode doesn't need it.                              |
+| **Manual Amplify/GitHub connection needed.**                                                        | Arshvir stops and gives Piyush the exact console steps rather than guessing.                                            |
+
+---
+
+## 8. Messages to Teammates
+
+**Rutu (after Day 1 step 6 lands):** Build handlers against the contracts in `services/shared` and test with the fixture. Judge-3 (Llama) runs in JSON mode through the shared wrapper. Use the shared model wrapper for every call. Put prompts in `services/tribunal/prompts`, the Guardrail config as a JSON file, and three demo cases plus fallback rulings in `bench/demo`. Ping before needing real Bedrock access.
+
+**Piyush (Day 1):** Clone, run the mock server, build against it. Point at the real API URL once it's sent at the end of Day 1. Connect the repo to Amplify after Arshvir does the one-time GitHub connection.

@@ -20,6 +20,7 @@ export class AuthStack extends cdk.Stack {
     this.userPoolClient = new cognito.UserPoolClient(this, 'PanchUserPoolClient', {
       userPool: this.userPool,
       generateSecret: false,
+      authFlows: { adminUserPassword: true, userPassword: true }
     });
 
     new ssm.StringParameter(this, 'UserPoolIdParam', {
