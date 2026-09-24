@@ -1,0 +1,206 @@
+{
+  "cases": {
+    "CREATED": {
+      "caseId": "c-100",
+      "status": "CREATED",
+      "claimantId": "u-1",
+      "respondentId": "u-2",
+      "amountCents": 40000,
+      "currency": "USD",
+      "createdAt": "2026-09-25T10:00:00Z"
+    },
+    "FUNDED": {
+      "caseId": "c-101",
+      "status": "FUNDED",
+      "claimantId": "u-1",
+      "respondentId": "u-2",
+      "amountCents": 40000,
+      "currency": "USD",
+      "createdAt": "2026-09-25T10:00:00Z"
+    },
+    "DISPUTED": {
+      "caseId": "c-102",
+      "status": "DISPUTED",
+      "claimantId": "u-1",
+      "respondentId": "u-2",
+      "amountCents": 40000,
+      "currency": "USD",
+      "evidenceDeadline": "2026-09-28T10:00:00Z",
+      "createdAt": "2026-09-25T10:00:00Z"
+    },
+    "DELIBERATING": {
+      "caseId": "c-103",
+      "status": "DELIBERATING",
+      "claimantId": "u-1",
+      "respondentId": "u-2",
+      "amountCents": 40000,
+      "currency": "USD",
+      "createdAt": "2026-09-25T10:00:00Z",
+      "executionArn": "arn:aws:states:us-east-1:123:execution:tribunal:123"
+    },
+    "RULED": {
+      "caseId": "c-104",
+      "status": "RULED",
+      "claimantId": "u-1",
+      "respondentId": "u-2",
+      "amountCents": 40000,
+      "currency": "USD",
+      "createdAt": "2026-09-25T10:00:00Z"
+    },
+    "ESCALATED": {
+      "caseId": "c-105",
+      "status": "ESCALATED",
+      "claimantId": "u-1",
+      "respondentId": "u-2",
+      "amountCents": 40000,
+      "currency": "USD",
+      "createdAt": "2026-09-25T10:00:00Z"
+    },
+    "SETTLED": {
+      "caseId": "c-106",
+      "status": "SETTLED",
+      "claimantId": "u-1",
+      "respondentId": "u-2",
+      "amountCents": 40000,
+      "currency": "USD",
+      "createdAt": "2026-09-25T10:00:00Z"
+    }
+  },
+  "evidence": [
+    {
+      "caseId": "c-104",
+      "evidenceId": "e-1",
+      "party": "claimant",
+      "type": "contract",
+      "s3Key": "panch-evidence/c-104/e-1",
+      "uploadedAt": "2026-09-25T10:05:00Z"
+    },
+    {
+      "caseId": "c-104",
+      "evidenceId": "e-2",
+      "party": "claimant",
+      "type": "deliverable",
+      "s3Key": "panch-evidence/c-104/e-2",
+      "uploadedAt": "2026-09-25T10:10:00Z"
+    },
+    {
+      "caseId": "c-104",
+      "evidenceId": "e-3",
+      "party": "respondent",
+      "type": "chat",
+      "s3Key": "panch-evidence/c-104/e-3",
+      "uploadedAt": "2026-09-25T11:00:00Z"
+    }
+  ],
+  "tribunalOutput": {
+    "caseId": "c-104",
+    "judges": [
+      {
+        "findingsOfFact": [{"fact": "Work delivered on time", "evidenceIds": ["e-2"]}],
+        "clausesRelied": [{"clauseRef": "3.1", "interpretation": "Payment upon delivery"}],
+        "payeeShareBps": 10000,
+        "reasoning": "Claimant fulfilled the contract.",
+        "confidence": 0.95,
+        "uncertainties": []
+      },
+      {
+        "findingsOfFact": [{"fact": "Work delivered", "evidenceIds": ["e-2"]}, {"fact": "Respondent complained about quality", "evidenceIds": ["e-3"]}],
+        "clausesRelied": [{"clauseRef": "3.1", "interpretation": "Payment upon delivery"}, {"clauseRef": "4.1", "interpretation": "Must meet standard"}],
+        "payeeShareBps": 8000,
+        "reasoning": "Work delivered but minor quality issues.",
+        "confidence": 0.8,
+        "uncertainties": ["quality standard ambiguity"]
+      },
+      {
+        "findingsOfFact": [{"fact": "Work delivered on time", "evidenceIds": ["e-2"]}],
+        "clausesRelied": [{"clauseRef": "3.1", "interpretation": "Payment upon delivery"}],
+        "payeeShareBps": 10000,
+        "reasoning": "Claimant fulfilled the contract.",
+        "confidence": 0.9,
+        "uncertainties": []
+      }
+    ],
+    "crossExam": [
+      {
+        "critiques": [
+          {
+            "targetJudge": "Judge 2",
+            "type": "factual",
+            "claim": "Quality was not a condition for payment in clause 3.1",
+            "evidenceIds": ["e-1"]
+          }
+        ],
+        "revisedRuling": {
+          "findingsOfFact": [{"fact": "Work delivered on time", "evidenceIds": ["e-2"]}],
+          "clausesRelied": [{"clauseRef": "3.1", "interpretation": "Payment upon delivery"}],
+          "payeeShareBps": 10000,
+          "reasoning": "Accepted critique. Full payment due.",
+          "confidence": 0.9,
+          "uncertainties": []
+        },
+        "changed": true
+      }
+    ],
+    "swapConsistent": true,
+    "aggregate": {
+      "payeeShareBps": 10000,
+      "spreadBps": 0,
+      "escalated": false
+    },
+    "ruling": {
+      "findingsOfFact": [{"fact": "Work delivered on time", "evidenceIds": ["e-2"]}],
+      "clausesRelied": [{"clauseRef": "3.1", "interpretation": "Payment upon delivery"}],
+      "payeeShareBps": 10000,
+      "reasoning": "The panel finds the claimant delivered the work as specified.",
+      "confidence": 0.95,
+      "uncertainties": []
+    }
+  },
+  "escalatedCaseOutput": {
+    "caseId": "c-105",
+    "judges": [
+      {
+        "findingsOfFact": [],
+        "clausesRelied": [],
+        "payeeShareBps": 10000,
+        "reasoning": "Pro claimant",
+        "confidence": 0.6,
+        "uncertainties": []
+      },
+      {
+        "findingsOfFact": [],
+        "clausesRelied": [],
+        "payeeShareBps": 0,
+        "reasoning": "Pro respondent",
+        "confidence": 0.6,
+        "uncertainties": []
+      },
+      {
+        "findingsOfFact": [],
+        "clausesRelied": [],
+        "payeeShareBps": 5000,
+        "reasoning": "Split",
+        "confidence": 0.5,
+        "uncertainties": []
+      }
+    ],
+    "crossExam": [],
+    "swapConsistent": false,
+    "aggregate": {
+      "payeeShareBps": 5000,
+      "spreadBps": 10000,
+      "escalated": true
+    }
+  },
+  "timeline": [
+    "INTAKE",
+    "BLIND",
+    "JUDGES",
+    "CROSS_EXAM",
+    "SWAP_TEST",
+    "AGGREGATE",
+    "PRESIDING",
+    "PUBLISH",
+    "SETTLE"
+  ]
+}
