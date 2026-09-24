@@ -8,14 +8,24 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.0.0",
+    "@aws-sdk/client-dynamodb": "^3.1140.0",
+    "@aws-sdk/client-s3": "^3.1140.0",
+    "@aws-sdk/client-ssm": "^3.1140.0",
+    "@aws-sdk/lib-dynamodb": "^3.1140.0",
+    "@aws-sdk/s3-request-presigner": "^3.1140.0",
+    "@aws-sdk/util-dynamodb": "^3.996.9",
     "zod": "^3.0.0"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.163",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/uuid": "^10.0.0",
+    "aws-sdk-client-mock": "^4.1.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "ts-node": "^10.9.2",
+    "uuid": "^14.0.2",
     "vitest": "^2.0.0"
   }
 }

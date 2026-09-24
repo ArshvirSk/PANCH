@@ -18,7 +18,7 @@ const env = {
 
 const dataStack = new DataStack(app, 'PanchDataStack', { env });
 const authStack = new AuthStack(app, 'PanchAuthStack', { env });
-const apiStack = new ApiStack(app, 'PanchApiStack', { env });
+const apiStack = new ApiStack(app, 'PanchApiStack', { env, userPool: authStack.userPool, dataStack });
 const workflowStack = new WorkflowStack(app, 'PanchWorkflowStack', { env });
 const webStack = new WebStack(app, 'PanchWebStack', { env });
 const obsStack = new ObsStack(app, 'PanchObsStack', { env });
