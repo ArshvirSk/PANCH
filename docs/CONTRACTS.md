@@ -14,6 +14,8 @@ These act as the boundary between the Frontend (Piyush), AI/Data (Rutu), and Inf
 5. **Ledger:** The events (`FUND`, `DISPUTE`, `RESOLVE`, `RELEASE`), and the hash chain logic: `entryHash = sha256(prevHash|event|amount|caseId)` (first entry prevHash = "GENESIS").
 6. **S3 Keys:** Exact string templates for evidence, extracted text, and rulings.
 7. **SSM Parameters:** The keys for the 3 judges and presiding judge model IDs, their `-mode` settings, and configuration thresholds.
+8. **Step Functions IO Contracts:** Every Step Functions task (`intake`, `blind`, `judge`, `crossExam`, `swapTest`, `aggregate`, `presiding`, `publish`, `settle`, `notify`) has heavily typed inputs and outputs defined in `step-functions.ts`.
+9. **Bedrock Helper:** `invokeJudgeModel(role, params)` helper in `helpers.ts` retrieves the specific model configuration from SSM and invokes Bedrock.
 
 ## Usage
 
