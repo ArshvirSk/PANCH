@@ -64,7 +64,7 @@ export class WorkflowStack extends cdk.Stack {
             `arn:aws:bedrock:${this.region}::foundation-model/amazon.nova-pro-v1:0`,
             `arn:aws:bedrock:${this.region}::foundation-model/mistral.mistral-large-3-675b-instruct`,
             `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.meta.llama3-3-70b-instruct-v1:0`,
-            `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.mistral.mistral-large-3-675b-instruct`
+            `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-3-70b-instruct-v1:0`
           ]
         })
       ]

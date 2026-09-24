@@ -57,7 +57,7 @@ Never start a lower priority while a higher one is broken.
 ## Repo layout
 
 ```
-/docs                 PRD, TRD, dev-process log and proof
+/docs                 Panch_PRD, Panch_TRD, TEAM_PLAN, dev-process log and proof
 /infra                CDK app (Data, Auth, Api, Workflow, Web, Obs stacks)
 /services/api         Lambda API handlers
 /services/tribunal    Step Functions task Lambdas and prompts

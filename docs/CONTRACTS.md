@@ -11,7 +11,7 @@ These act as the boundary between the Frontend (Piyush), AI/Data (Rutu), and Inf
 2. **Cross-Examination Schema:** The schema for a judge critiquing others and producing a `revisedRuling`.
 3. **API Types:** `CreateDeal`, `EvidenceUpload` requests and responses. Case and Ruling retrieval endpoints per TRD section 4.
 4. **DynamoDB Entities:** `CaseItem`, `EvidenceItem`, `RulingItem`, `LedgerItem`, `BenchCaseItem`, `BenchRunItem`.
-5. **Ledger:** The events (`FUND`, `DISPUTE`, `RESOLVE`, `RELEASE`), and the hash chain logic: `entryHash = sha256(prevHash + event + amount + caseId)`.
+5. **Ledger:** The events (`FUND`, `DISPUTE`, `RESOLVE`, `RELEASE`), and the hash chain logic: `entryHash = sha256(prevHash|event|amount|caseId)` (first entry prevHash = "GENESIS").
 6. **S3 Keys:** Exact string templates for evidence, extracted text, and rulings.
 7. **SSM Parameters:** The keys for the 3 judges and presiding judge model IDs, their `-mode` settings, and configuration thresholds.
 
