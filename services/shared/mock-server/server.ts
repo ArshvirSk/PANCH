@@ -35,7 +35,7 @@ app.get('/cases/:id', (req, res) => {
   const c = (data.cases as any)[state] || data.cases.CREATED;
   
   // Simulate timeline if deliberating or ruled
-  let timeline = [];
+  let timeline: string[] = [];
   if (state === 'DELIBERATING') {
     timeline = data.timeline.slice(0, 4); // Up to CROSS_EXAM
   } else if (state === 'RULED' || state === 'SETTLED') {
