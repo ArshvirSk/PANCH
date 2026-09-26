@@ -90,6 +90,25 @@ export const STATUS_LABELS: Record<Status, string> = {
   SETTLED: 'Settled',
 };
 
+export type CaseIdResult = { ok: true; id: string } | { ok: false; error: string };
+
+/** Accepts a bare case ID or a pasted Panch link (…?id=c-123). */
+export function parseCaseIdInput(input: string): CaseIdResult {
+  const trimmed = input.trim();
+  if (!trimmed) return { ok: false, error: 'Enter a case ID.' };
+  const fromUrl = /[?&]id=([^&#\s]+)/.exec(trimmed);
+  let id = fromUrl ? fromUrl[1] : trimmed;
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    // Malformed %-escape: validate the raw text instead.
+  }
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
+    return { ok: false, error: 'Case IDs contain only letters, numbers and dashes, like c-1a2b3c4d.' };
+  }
+  return { ok: true, id };
+}
+
 export function statusLabel(status: string): string {
   return STATUS_LABELS[status as Status] ?? status;
 }

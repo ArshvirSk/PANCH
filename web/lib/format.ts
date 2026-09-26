@@ -29,9 +29,9 @@ export function parseAmountToCents(input: string): AmountResult {
   return { ok: true, cents };
 }
 
+/** 10000 bps = 100%. Shows up to two decimals, so 1 bps reads 0.01% rather than rounding to 0. */
 export function bpsToPercent(bps: number): string {
-  const pct = bps / 100;
-  return `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
+  return `${Number((bps / 100).toFixed(2))}%`;
 }
 
 export function shortHash(hash: string, size = 10): string {

@@ -16,7 +16,7 @@ function setup(responses: Response[] | ((url: string, init?: RequestInit) => Res
     queue ? queue.shift()! : (responses as (u: string, i?: RequestInit) => Response)(url, init),
   );
   const onUnauthorized = vi.fn();
-  const api = createApiClient({ baseUrl: BASE, getIdToken: async () => token ?? undefined, onUnauthorized, fetchImpl });
+  const api = createApiClient({ baseUrl: BASE, getIdToken: async () => token ?? undefined, onUnauthorized, fetchImpl, retryDelayMs: 0 });
   return { api, fetchImpl, onUnauthorized };
 }
 

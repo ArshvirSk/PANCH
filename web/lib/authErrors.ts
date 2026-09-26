@@ -33,14 +33,16 @@ export function authErrorMessage(err: unknown): string {
 }
 
 /** Password rules of the default Cognito policy used by AuthStack. */
+export const PASSWORD_RULES: { label: string; test: (password: string) => boolean }[] = [
+  { label: 'at least 8 characters', test: (p) => p.length >= 8 },
+  { label: 'a lowercase letter', test: (p) => /[a-z]/.test(p) },
+  { label: 'an uppercase letter', test: (p) => /[A-Z]/.test(p) },
+  { label: 'a number', test: (p) => /\d/.test(p) },
+  { label: 'a symbol', test: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
 export function passwordProblems(password: string): string[] {
-  const problems: string[] = [];
-  if (password.length < 8) problems.push('at least 8 characters');
-  if (!/[a-z]/.test(password)) problems.push('a lowercase letter');
-  if (!/[A-Z]/.test(password)) problems.push('an uppercase letter');
-  if (!/\d/.test(password)) problems.push('a number');
-  if (!/[^A-Za-z0-9]/.test(password)) problems.push('a symbol');
-  return problems;
+  return PASSWORD_RULES.filter((rule) => !rule.test(password)).map((rule) => rule.label);
 }
 
 /** Only allow same-site relative redirects after sign-in. */

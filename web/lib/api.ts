@@ -26,6 +26,7 @@ export class ApiError extends Error {
 
 export const NETWORK_ERROR_MESSAGE =
   'Could not reach the Panch API. Check your connection and try again.';
+export const TIMEOUT_MESSAGE = 'The Panch API took too long to respond. Please try again.';
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -36,7 +37,15 @@ export interface ApiClientOptions {
   /** Called when a protected route answers 401, so the app can drop the session. */
   onUnauthorized?: () => void;
   fetchImpl?: FetchLike;
+  /** Per-request timeout for API calls (uploads get longer). */
+  timeoutMs?: number;
+  /** Wait before the single retry of a failed GET. */
+  retryDelayMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 20_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 
 interface RequestOptions {
   method?: 'GET' | 'POST';
@@ -55,6 +64,14 @@ async function readBody(res: Response): Promise<unknown> {
 }
 
 function errorMessage(status: number, body: unknown): string {
+  if (status === 429) return 'Too many requests right now. Please wait a moment and try again.';
+  // Server-side failures can carry internal details (SDK errors); never show those to users.
+  if (status >= 500) return `The Panch service had a problem (error ${status}). Please try again shortly.`;
+  if (body && typeof body === 'object') {
+    const record = body as Record<string, unknown>;
+    // API Gateway's answer for a route that does not exist.
+    if (record.message === 'Missing Authentication Token') return 'This action is not available on the server yet.';
+  }
   if (body && typeof body === 'object') {
     const record = body as Record<string, unknown>;
     if (typeof record.error === 'string' && record.error) return record.error;
@@ -94,6 +111,21 @@ export function normalizeCaseView(body: unknown): CaseView {
 
 export function createApiClient(options: ApiClientOptions) {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((input, init) => fetch(input, init));
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const retryDelayMs = options.retryDelayMs ?? 600;
+
+  /** fetch with a timeout. Network failures and timeouts become ApiError(0). */
+  async function send(url: string, init: RequestInit, limitMs: number): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), limitMs);
+    try {
+      return await fetchImpl(url, { ...init, signal: controller.signal });
+    } catch {
+      throw new ApiError(0, controller.signal.aborted ? TIMEOUT_MESSAGE : NETWORK_ERROR_MESSAGE);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   async function request<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
     if (!options.baseUrl) {
@@ -112,15 +144,24 @@ export function createApiClient(options: ApiClientOptions) {
       headers.Authorization = token;
     }
 
+    const method = opts.method ?? 'GET';
+    const init: RequestInit = {
+      method,
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    };
+    const url = `${options.baseUrl}${path}`;
+
+    // Reads are safe to repeat, so a GET gets one retry on a network blip or gateway error.
+    // Writes are never retried: a POST that timed out may still have been applied.
     let res: Response;
     try {
-      res = await fetchImpl(`${options.baseUrl}${path}`, {
-        method: opts.method ?? 'GET',
-        headers,
-        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-      });
-    } catch {
-      throw new ApiError(0, NETWORK_ERROR_MESSAGE);
+      res = await send(url, init, timeoutMs);
+      if (method === 'GET' && RETRYABLE_STATUSES.has(res.status)) throw new ApiError(res.status, '');
+    } catch (err) {
+      if (method !== 'GET') throw err;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      res = await send(url, init, timeoutMs);
     }
 
     const body = await readBody(res);
@@ -182,13 +223,12 @@ export function createApiClient(options: ApiClientOptions) {
     async uploadToPresignedUrl(uploadUrl: string, file: Blob, contentType: string): Promise<void> {
       let res: Response;
       try {
-        res = await fetchImpl(uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': contentType },
-          body: file,
-        });
-      } catch {
-        throw new ApiError(0, 'The file upload could not reach storage. Check your connection and try again.');
+        res = await send(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file }, UPLOAD_TIMEOUT_MS);
+      } catch (err) {
+        const timedOut = err instanceof ApiError && err.message === TIMEOUT_MESSAGE;
+        throw new ApiError(0, timedOut
+          ? 'The file upload timed out. Try again on a faster connection or with a smaller file.'
+          : 'The file upload could not reach storage. Check your connection and try again.');
       }
       if (!res.ok) {
         const body = await readBody(res);

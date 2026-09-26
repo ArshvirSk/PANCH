@@ -74,6 +74,13 @@ export function createCaseMemory(store: KeyValueStore | null = browserStore()) {
       write(recentKey(sub), [entry, ...rest].slice(0, MAX_RECENT), store);
     },
 
+    /** Updates a remembered case in place, keeping the list order (used for background refreshes). */
+    updateCase(sub: string, caseId: string, patch: Partial<Omit<RecentCase, 'caseId'>>): void {
+      const list = read<RecentCase>(recentKey(sub), store);
+      if (!list.some((c) => c.caseId === caseId)) return;
+      write(recentKey(sub), list.map((c) => (c.caseId === caseId ? { ...c, ...patch } : c)), store);
+    },
+
     forgetCase(sub: string, caseId: string): void {
       write(recentKey(sub), read<RecentCase>(recentKey(sub), store).filter((c) => c.caseId !== caseId), store);
     },
