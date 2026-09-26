@@ -88,6 +88,7 @@ export const STATUS_LABELS: Record<Status, string> = {
   ESCALATED: 'Human review',
   RULED: 'Ruled',
   SETTLED: 'Settled',
+  FAILED: 'Failed',
 };
 
 export type CaseIdResult = { ok: true; id: string } | { ok: false; error: string };

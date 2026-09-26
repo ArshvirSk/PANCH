@@ -19,6 +19,7 @@ describe('action matrix: every status × role', () => {
     ESCALATED: { claimant: [], respondent: [], observer: [] },
     RULED: { claimant: ['viewRuling'], respondent: ['viewRuling'], observer: ['viewRuling'] },
     SETTLED: { claimant: ['viewRuling'], respondent: ['viewRuling'], observer: ['viewRuling'] },
+    FAILED: { claimant: [], respondent: [], observer: [] },
   };
   for (const status of ALL_STATUSES) {
     for (const role of ROLES) {
