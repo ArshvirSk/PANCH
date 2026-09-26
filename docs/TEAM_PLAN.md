@@ -109,7 +109,7 @@ Run one prompt per day (`Arshvir_prompts.md`), deploy, and check before moving o
 
 **Checkpoint:** `cdk deploy --all` run, smoke test passing, public URL live and never broken after this point. PR opened, LOG.md updated. Message sent to Rutu (contracts ready) and Piyush (mock server + real API URL, Amplify GitHub connection).
 
-### Day 2: Workflow wiring, demo, verification
+### Day 2: Workflow wiring, demo, verification (✅ DONE)
 
 **Owner: Arshvir** (WorkflowStack), **depends on Rutu's handlers in `/services/tribunal`** (branch `a/feat/day2-workflow`)
 
@@ -122,7 +122,7 @@ Run one prompt per day (`Arshvir_prompts.md`), deploy, and check before moving o
 
 **Checkpoint:** `/demo/run` runs end-to-end against fixture handlers, PR opened, LOG.md updated. Rutu given a CLI one-liner to start executions without being blocked on the API.
 
-### Day 2 addition: Arshvir
+### Day 2 addition: Arshvir (✅ DONE)
 
 Add to Day 2's API wiring track, after the Route (Choice) state is wired: implement `GET /reviews` and `POST /reviews/{caseId}` per contract section H above. Both reuse the existing ledger library — no new state machine logic. This can be the last item of Day 2 or the first item of Day 3 depending on time; it's small (reads + one settle call).
 

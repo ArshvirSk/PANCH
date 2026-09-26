@@ -28,7 +28,15 @@ export class ApiStack extends cdk.Stack {
         allowMethods: apigw.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
       },
-      deployOptions: { tracingEnabled: true }
+      deployOptions: { 
+        tracingEnabled: true,
+        methodOptions: {
+          '/demo/run/POST': {
+            throttlingRateLimit: 2,
+            throttlingBurstLimit: 5
+          }
+        }
+      }
     });
 
     const corsErrorHeaders = { 'Access-Control-Allow-Origin': "'*'", 'Access-Control-Allow-Headers': "'*'" };
@@ -141,7 +149,10 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'getRulings',
       entry: path.join(__dirname, '../../services/api/rulings.ts'),
-      environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
+      environment: { 
+        CASES_TABLE: props.dataStack.casesTable.tableName,
+        RULINGS_DOMAIN: props.dataStack.rulingsDistribution.distributionDomainName
+      }
     });
     props.dataStack.casesTable.grantReadData(getRulingsLambda);
     rulings.addMethod('GET', new apigw.LambdaIntegration(getRulingsLambda));
@@ -150,6 +161,9 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'getRulingById',
       entry: path.join(__dirname, '../../services/api/rulings.ts'),
+      environment: {
+        RULINGS_DOMAIN: props.dataStack.rulingsDistribution.distributionDomainName
+      }
     });
     const rulingId = rulings.addResource('{id}');
     rulingId.addMethod('GET', new apigw.LambdaIntegration(getRulingByIdLambda));

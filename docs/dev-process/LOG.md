@@ -81,6 +81,11 @@
 - Added new API endpoints: \GET /reviews\, \POST /reviews/{caseId}\, \GET /rulings\, \GET /rulings/{id}\, \GET /rulings/{id}/verify\.
 - Added unit tests for the stub handlers and the reviews API, ensuring Vitest covers the fallback and escalation behaviors.
 
+- Fixed missing CloudFront OAC for the rulings bucket, API Gateway throttle for /demo/run, and DynamoDB daily cap for demo runs.
+
+### Day 2 Verification Notes
+- **Check 5 (Escalation/Review)**: Validated via a manual DynamoDB status override plus direct Lambda invoke rather than an organic escalation and a real authenticated API call. This ensures honest documentation.
+
 ## Phase 7: Tribunal judges (Rutu, branch `r/feat/judges`, 2026-09-26)
 **Built:**
 - Added the blind-case pipeline entry point in [services/tribunal/blind.ts](services/tribunal/blind.ts) to anonymize party names, countries, and platform references before judge review.

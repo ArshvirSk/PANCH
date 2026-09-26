@@ -20,3 +20,12 @@ These act as the boundary between the Frontend (Piyush), AI/Data (Rutu), and Inf
 ## Usage
 
 Frontend and Tribunal tasks should import types and mock data from `services/shared` rather than redefining them. Mocks are available via the mock API server for parallel development.
+
+## H. Review API (Phase 6)
+- \GET /reviews\: Lists cases in ESCALATED state. Re-uses the Cognito Auth.
+- \POST /reviews/{caseId}\: Accepts \{ payeeShareBps, note }\. Writes Rulings entry with \humanReviewed: true\ and resolves/releases funds.
+*(Scope cut: Any authenticated user can call this route during the hackathon, no special role needed)*
+
+## Workflow Integration Notes for Rutu
+- Replace \services/tribunal/stubs/*\ with real handlers. The interface remains the same and no WorkflowStack changes are needed.
+- Replace the placeholder Guardrail config with \services/tribunal/guardrail-config.json\ once available.

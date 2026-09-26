@@ -8,6 +8,9 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as path from 'path';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 export class DataStack extends cdk.Stack {
   public readonly casesTable: dynamodb.Table;
@@ -21,7 +24,10 @@ export class DataStack extends cdk.Stack {
   public readonly rulingsBucket: s3.Bucket;
   public readonly benchmarkBucket: s3.Bucket;
 
+  public readonly benchmarkBucket: s3.Bucket;
+
   public readonly kmsKey: kms.Key;
+  public readonly rulingsDistribution: cloudfront.Distribution;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -99,6 +105,8 @@ export class DataStack extends cdk.Stack {
     });
 
     this.rulingsBucket = new s3.Bucket(this, 'RulingsBucket', {
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: this.kmsKey,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, // OAC will grant CF access later
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
@@ -109,6 +117,47 @@ export class DataStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
+
+    const oac = new cloudfront.CfnOriginAccessControl(this, 'RulingsOAC', {
+      originAccessControlConfig: {
+        name: 'RulingsBucketOAC',
+        originAccessControlOriginType: 's3',
+        signingBehavior: 'always',
+        signingProtocol: 'sigv4',
+      }
+    });
+
+    this.rulingsDistribution = new cloudfront.Distribution(this, 'RulingsDist', {
+      defaultBehavior: {
+        origin: new origins.S3Origin(this.rulingsBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+        cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD_OPTIONS,
+      }
+    });
+
+    // Override the origin access identity to use OAC instead
+    const cfnDist = this.rulingsDistribution.node.defaultChild as cloudfront.CfnDistribution;
+    cfnDist.addPropertyOverride('DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity', '');
+    cfnDist.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', oac.attrId);
+
+    this.rulingsBucket.addToResourcePolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject'],
+      resources: [this.rulingsBucket.arnForObjects('*')],
+      principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+      conditions: {
+        StringEquals: { 'AWS:SourceArn': `arn:aws:cloudfront::${this.account}:distribution/${this.rulingsDistribution.distributionId}` }
+      }
+    }));
+
+    this.kmsKey.addToResourcePolicy(new iam.PolicyStatement({
+      actions: ['kms:Decrypt'],
+      resources: ['*'],
+      principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+      conditions: {
+        StringLike: { 'AWS:SourceArn': `arn:aws:cloudfront::${this.account}:distribution/*` }
+      }
+    }));
 
     // 4. S3 Event Lambda
     const processEvidenceLambda = new nodejs.NodejsFunction(this, 'ProcessEvidenceHandler', {

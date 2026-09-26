@@ -19,6 +19,21 @@ export const runDemo = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const caseId = `demo-${uuidv4().substring(0, 8)}`;
     const claimantId = 'demo-claimant';
     
+    // DynamoDB Daily Cap (default 30/day)
+    const today = new Date().toISOString().substring(0, 10); // YYYY-MM-DD
+    const capRes = await docClient.send(new UpdateCommand({
+      TableName: CASES_TABLE,
+      Key: { caseId: `DEMO_CAP_${today}` },
+      UpdateExpression: 'ADD #cnt :inc',
+      ExpressionAttributeNames: { '#cnt': 'count' },
+      ExpressionAttributeValues: { ':inc': 1 },
+      ReturnValues: 'UPDATED_NEW'
+    }));
+
+    if (capRes.Attributes && capRes.Attributes.count > 30) {
+      return respond(429, { error: 'Daily demo limit reached. Try again tomorrow.' });
+    }
+
     // Auto-create, fund, dispute
     const item = { 
       caseId, 
