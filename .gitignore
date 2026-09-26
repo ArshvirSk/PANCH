@@ -13,3 +13,5 @@ web/next-env.d.ts
 
 # local AI-agent settings and session data, never committed
 .claude/
+.freebuff/
+tmp_hist.json
