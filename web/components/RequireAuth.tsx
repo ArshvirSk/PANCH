@@ -23,12 +23,14 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (!isAuthConfigured) {
     return (
-      <Notice tone="error" title="Sign-in is not configured">
-        This build is missing the Cognito settings, so signed-in pages are unavailable. The demo and
-        public rulings still work.
-      </Notice>
+      <div className="container page">
+        <Notice tone="error" title="Sign-in is not configured">
+          This build is missing the Cognito settings, so signed-in pages are unavailable. The demo and
+          public rulings still work.
+        </Notice>
+      </div>
     );
   }
-  if (status !== 'signedIn') return <Spinner label="Checking your session…" />;
+  if (status !== 'signedIn') return <div className="container page"><Spinner label="Checking your session…" /></div>;
   return <>{children}</>;
 }

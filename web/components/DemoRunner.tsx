@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useAuth } from '../lib/auth';
 import type { DemoRunResult } from '../lib/types';
+import { Icon } from './Icon';
 import { Notice } from './Notice';
+import { ButtonSpinner } from './Spinner';
 
 /** "Run demo case" (PRD F10). Public: POST /demo/run needs no login. */
 export function DemoRunner() {
@@ -14,6 +16,7 @@ export function DemoRunner() {
   const [error, setError] = useState('');
 
   async function run() {
+    if (running) return;
     setRunning(true);
     setError('');
     setResult(null);
@@ -28,13 +31,21 @@ export function DemoRunner() {
 
   return (
     <div className="demo-runner">
-      <button type="button" className="btn btn-primary btn-lg" onClick={run} disabled={running} data-testid="run-demo">
-        {running ? 'Starting demo…' : 'Run demo case'}
-      </button>
+      <div className="demo-actions">
+        <button type="button" className="btn btn-primary btn-lg" onClick={run} disabled={running} data-testid="run-demo">
+          {running ? <ButtonSpinner /> : <Icon name="play" size={16} />}
+          {running ? 'Starting demo…' : 'Run demo case'}
+        </button>
+        <Link href="/ruling/?id=c-104" className="btn btn-on-dark btn-lg">
+          See a sample ruling
+          <Icon name="arrow-right" size={16} />
+        </Link>
+      </div>
       <div aria-live="polite">
-        {error && <Notice tone="error" title="Demo failed to start">{error}</Notice>}
+        {error && <Notice tone="error" title="The demo could not start">{error}</Notice>}
         {result && (
           <Notice tone="success" title={result.message}>
+            <p>The pre-seeded case is on its way through intake, the three judges, cross-examination and the swap test.</p>
             {result.caseId && (
               <p>
                 Case <code>{result.caseId}</code>.{' '}
@@ -42,13 +53,9 @@ export function DemoRunner() {
               </p>
             )}
             {result.executionArn && (
-              <p className="muted small">
-                Tribunal run: <code className="break">{result.executionArn}</code>
-              </p>
+              <p className="small muted">Tribunal run <code className="break">{result.executionArn}</code></p>
             )}
-            <p>
-              <Link href="/ruling/?id=c-104">See a sample published ruling</Link>
-            </p>
+            <p><Link href="/ruling/?id=c-104">See a sample published ruling</Link></p>
           </Notice>
         )}
       </div>

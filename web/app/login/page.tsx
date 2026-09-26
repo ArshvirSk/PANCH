@@ -1,13 +1,16 @@
 'use client';
 
+import Link from 'next/link';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
-import { authErrorMessage, passwordProblems, safeNextPath } from '../../lib/authErrors';
+import { PASSWORD_RULES, authErrorMessage, passwordProblems, safeNextPath } from '../../lib/authErrors';
 import { isAuthConfigured } from '../../lib/config';
 import { isValidEmail } from '../../lib/format';
+import { Icon } from '../../components/Icon';
+import { LogoMark } from '../../components/Logo';
 import { Notice } from '../../components/Notice';
-import { Spinner } from '../../components/Spinner';
+import { ButtonSpinner, Spinner } from '../../components/Spinner';
 
 type Mode = 'signIn' | 'signUp' | 'confirm';
 
@@ -20,6 +23,7 @@ function LoginForm() {
   const [mode, setMode] = useState<Mode>(searchParams.get('mode') === 'signUp' ? 'signUp' : 'signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -36,6 +40,7 @@ function LoginForm() {
   }
 
   async function run(action: () => Promise<void>) {
+    if (busy) return;
     setBusy(true);
     setError('');
     setInfo('');
@@ -79,7 +84,7 @@ function LoginForm() {
       const step = await signUp(email, password);
       if (step === 'confirm') {
         switchMode('confirm');
-        setInfo(`We emailed a verification code to ${email.trim()}.`);
+        setInfo(`We emailed a 6-digit verification code to ${email.trim()}.`);
       } else {
         await signIn(email, password);
       }
@@ -119,8 +124,21 @@ function LoginForm() {
   }
   if (status === 'loading' || status === 'signedIn') return <Spinner label="Checking your session…" />;
 
+  const heading = mode === 'confirm' ? 'Confirm your email' : mode === 'signIn' ? 'Welcome back' : 'Create your account';
+  const subheading =
+    mode === 'confirm'
+      ? 'Enter the 6-digit code we emailed you.'
+      : mode === 'signIn'
+        ? 'Sign in to open a case or respond to one.'
+        : 'Free to try. Everything here runs on simulated funds.';
+
   return (
-    <div className="auth-card card">
+    <div className="auth-card">
+      <div className="auth-card-head">
+        <h1 className="h2">{heading}</h1>
+        <p className="muted">{subheading}</p>
+      </div>
+
       {mode !== 'confirm' && (
         <div className="tabs" role="tablist" aria-label="Account">
           <button type="button" role="tab" aria-selected={mode === 'signIn'} className={mode === 'signIn' ? 'tab active' : 'tab'} onClick={() => switchMode('signIn')}>
@@ -134,16 +152,29 @@ function LoginForm() {
 
       {mode === 'confirm' ? (
         <form className="stack" onSubmit={handleConfirm} noValidate>
-          <h1 className="h2">Confirm your email</h1>
           <label className="field">
-            <span>Email</span>
+            <span className="field-label">Email</span>
             <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} required />
           </label>
           <label className="field">
-            <span>Verification code</span>
-            <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} disabled={busy} required data-testid="confirm-code" />
+            <span className="field-label">Verification code</span>
+            <input
+              className="code-input"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="••••••"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              disabled={busy}
+              required
+              data-testid="confirm-code"
+            />
           </label>
-          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Confirming…' : 'Confirm and continue'}</button>
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+            {busy && <ButtonSpinner />}
+            {busy ? 'Confirming…' : 'Confirm and continue'}
+          </button>
           <div className="row-between">
             <button type="button" className="link-button" onClick={handleResend} disabled={busy}>Send a new code</button>
             <button type="button" className="link-button" onClick={() => switchMode('signIn')} disabled={busy}>Back to sign in</button>
@@ -151,27 +182,49 @@ function LoginForm() {
         </form>
       ) : (
         <form className="stack" onSubmit={mode === 'signIn' ? handleSignIn : handleSignUp} noValidate>
-          <h1 className="h2">{mode === 'signIn' ? 'Welcome back' : 'Create your Panch account'}</h1>
           <label className="field">
-            <span>Email</span>
-            <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} required data-testid="email" />
+            <span className="field-label">Email</span>
+            <span className="input-icon">
+              <Icon name="mail" size={17} />
+              <input type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} required data-testid="email" />
+            </span>
           </label>
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={busy}
-              required
-              data-testid="password"
-            />
+          <div className="field">
+            <label className="field-label" htmlFor="password">Password</label>
+            <span className="input-icon">
+              <Icon name="lock" size={17} />
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={busy}
+                required
+                aria-describedby={mode === 'signUp' ? 'password-rules' : undefined}
+                data-testid="password"
+              />
+              <button type="button" className="input-action" onClick={() => setShowPassword((s) => !s)} aria-pressed={showPassword} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </span>
             {mode === 'signUp' && (
-              <small className="muted">At least 8 characters with upper and lower case letters, a number and a symbol.</small>
+              <ul className="password-rules" id="password-rules" aria-label="Password requirements">
+                {PASSWORD_RULES.map((rule) => {
+                  const met = rule.test(password);
+                  return (
+                    <li key={rule.label} className={met ? 'met' : undefined}>
+                      <Icon name={met ? 'check-circle' : 'info'} size={14} />
+                      {rule.label}
+                      <span className="sr-only">{met ? ' (met)' : ' (not met)'}</span>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          </label>
-          <button type="submit" className="btn btn-primary" disabled={busy} data-testid="auth-submit">
+          </div>
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy} data-testid="auth-submit">
+            {busy && <ButtonSpinner />}
             {busy ? 'Please wait…' : mode === 'signIn' ? 'Sign in' : 'Create account'}
           </button>
         </form>
@@ -187,8 +240,26 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<Spinner />}>
-      <LoginForm />
-    </Suspense>
+    <div className="auth-layout">
+      <aside className="auth-aside" aria-hidden="true">
+        <div className="auth-aside-inner">
+          <LogoMark size={44} />
+          <p className="auth-quote">“Five voices, one reasoned decision, and nothing hidden.”</p>
+          <ul className="auth-points">
+            <li><Icon name="users" size={18} /> Three judges from different model families</li>
+            <li><Icon name="shuffle" size={18} /> Swap-tested for bias before any award</li>
+            <li><Icon name="hash" size={18} /> Published rulings you can verify</li>
+          </ul>
+        </div>
+      </aside>
+      <div className="auth-main">
+        <Suspense fallback={<Spinner />}>
+          <LoginForm />
+        </Suspense>
+        <p className="muted small center-text">
+          Just looking? <Link href="/#demo">Run the demo</Link> without an account.
+        </p>
+      </div>
+    </div>
   );
 }

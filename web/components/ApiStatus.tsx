@@ -21,9 +21,9 @@ export function ApiStatus() {
     };
   }, [api]);
 
-  const label = { checking: 'Checking API…', online: 'API online', offline: 'API unreachable' }[state];
+  const label = { checking: 'Checking service…', online: 'All systems operational', offline: 'Service unreachable' }[state];
   return (
-    <span className={`api-status api-status-${state}`} data-testid="api-status">
+    <span className={`api-status api-status-${state}`} data-testid="api-status" data-state={state}>
       <span className="dot" aria-hidden="true" />
       {label}
     </span>

@@ -6,3 +6,8 @@ export function Spinner({ label = 'Loading…' }: { label?: string }) {
     </div>
   );
 }
+
+/** Small spinner for inside buttons. */
+export function ButtonSpinner() {
+  return <span className="spinner spinner-sm" aria-hidden="true" />;
+}
