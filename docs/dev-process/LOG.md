@@ -94,5 +94,11 @@
 - Verified type safety with `npx tsc --noEmit` — this completed successfully with no TypeScript errors.
 - Attempted the required AWS validation command `aws sts get-caller-identity` and the SSM model-ID fetches before any Bedrock call, but the local environment does not have an active AWS profile/configured SSO session. The call remains blocked until the `panch` AWS login/profile is available in this shell.
 
+**Session 2 update (sync + retest, same day):**
+- Synced with `main` (Day 2 workflow stubs): relocated the real blind and judge handlers onto main's canonical `services/tribunal/stubs/` paths (`blind.ts`, `judge-1.ts`, `judge-2.ts`, `judge-3.ts`, shared utilities in `judgesShared.ts`), deleted the old-path duplicates, and adopted main's `panch-evidence/{caseId}/blinded.json` key template. Tightened evidence-ID sanitization: when the blinded case file lists real evidence IDs, findings may only cite those (the `e-*` prefix fallback now applies only when no ground-truth IDs exist).
+- No conflicts in `services/shared/` or `infra/` (auto-merged); sole conflict was `docs/dev-process/LOG.md` (both branches appended a Phase 6 entry; kept both, renumbered this entry to Phase 7).
+- Fixed pre-existing breaks that came in from main: `services/api/cases.ts` null-guarded `stateEnteredEventDetails`, and web learned the new `CaseStatus.FAILED` (actions, label, step rendering) — typecheck, lint, and all 295 tests now pass.
+- Re-attempted AWS validation, still blocked: `aws sts get-caller-identity` → exit 127, the AWS CLI is not installed on this machine; probing SSM through the project's own SDK (`@aws-sdk/client-ssm`) returns `CredentialsProviderError: Could not load credentials from any providers`. No `~/.aws/credentials`, no `~/.aws/config`, no `AWS_*` env vars on this machine.
+
 **Current blocker:**
-- Bedrock validation step is still pending because this machine is not authenticated to AWS. Until `aws sts get-caller-identity` succeeds and the SSM parameter values are readable, the real model calls cannot be validated as required for Session 1.
+- Bedrock validation (steps: SSM model-ID reads, per-judge Bedrock runs, schema + evidence-citation checks, end-to-end execution) has **not** run and **nothing is validated**. It stays blocked until this machine is authenticated to AWS (e.g. `aws sso login` with the panch profile, or provisioned credentials). Per session rules, no validation results are logged until `aws sts get-caller-identity` actually succeeds.
