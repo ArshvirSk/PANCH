@@ -15,3 +15,6 @@ web/next-env.d.ts
 .claude/
 .freebuff/
 tmp_hist.json
+
+# throwaway validation scripts/fixtures (never committed)
+scripts/tmp-validation/

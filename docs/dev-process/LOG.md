@@ -148,3 +148,27 @@
 **Checks:** `tsc --noEmit` clean, 302/302 tests pass (tribunal 10, shared 4, api 10, web 278).
 
 **Honest caveats:** earlier failed demos (`demo-8a993b5e`, `demo-af534c39`, `demo-ceaad0bd`, `demo-268a6849`) marked FAILED in the table are the pre-fix runs; `demo-e961fd80` is ESCALATED (fixture swap test + empty evidence, both since fixed). The swap preamble is a counterfactual instruction, not a mechanical relabel — on a blinded record, relabelling identical labels is a no-op and naive string swaps leave the narrative bound to the original labels.
+\r\n## Phase 10: audit findings — known limitations (documented for README/pitch, deliberate scope cuts, not bugs to fix)\r\n**Swap-test consistency is median-blind.** `swapConsistent` compares the panel's median award against `10000 - mirroredMedian`, so an individual judge whose mirrored ruling inverts poorly is absorbed by the median instead of flagged. Observed on a deliberately balanced fixture (`c-ambig-5b05407f`: late delivery + undefined "acceptance" + 6-week campaign launch on the deliverable): the original panel split 5000/10000/10000 (spread 5000 -> correctly escalated to human review), and all three mirrored rulings returned 0 — the mirror inverted cleanly — yet judge-1's original 5000 vs its own mirrored 0 is a 5000-bps mirror deviation that the median check scored as fully consistent. Per-judge mirror deviation exists in the execution history but is never aggregated.\r\n\r\n**Positional bias under the counterfactual swap.** On the same balanced fixture, judge-1 (Nova) accepted conduct-based acceptance in the original run ("launching the campaign with the deliverable… can be interpreted as acceptance in substance", 5000) then denied the identical reasoning in its mirrored run ("this does not constitute formal acceptance", 0) — the model contradicted its own reading of the same facts when told the party roles were reversed. The counterfactual swap framing measurably biases models toward the conservative literal interpretation. The mirroring logic does produce genuine self-disagreement on ambiguous cases; that signal is currently unused (see the median-blindness limitation above).\r\n\r\nBoth findings are real, reproducible, and intentionally left unfixed for the hackathon window; they belong in the pitch as honesty about the bias-eval surface (P1's bias-eval dashboard is the designed home for them).\r\nEOF
+git add .gitignore docs/dev-process/LOG.md && git commit -m "$(cat <<'EOF'
+docs: record swap-test median-blindness and positional bias as known limitations; ignore tmp-validation fixtures
+
+Phase 10 audit of the tribunal on a deliberately balanced 50/50 case found
+two real but out-of-scope issues, documented verbatim for the README/pitch:
+the swap-consistency check is median-blind (a judge contradicting itself
+across the mirror is absorbed by the median), and the counterfactual swap
+framing biases models toward the literal reading (Nova accepted conduct-
+acceptance in the original, denied it in the mirror of the same facts).
+
+Also adds scripts/tmp-validation/ to .gitignore (the audit fixtures were
+untracked, not actually ignored) and deletes the fixtures.
+
+🤖 Generated with Codebuff
+Co-Authored-By: Codebuff <noreply@codebuff.com>
+
+## Phase 10: audit findings - known limitations (documented for README/pitch, deliberate scope cuts, not bugs to fix)
+
+**Swap-test consistency is median-blind.** `swapConsistent` compares the panel median award against `10000 - mirroredMedian`, so an individual judge whose mirrored ruling inverts poorly is absorbed by the median instead of flagged. Observed on a deliberately balanced fixture (c-ambig-5b05407f: late delivery + undefined "acceptance" + 6-week campaign launch on the deliverable): the original panel split 5000/10000/10000 (spread 5000 -> correctly escalated to human review), and all three mirrored rulings returned 0 - the mirror inverted cleanly - yet judge-1 original 5000 vs its own mirrored 0 is a 5000-bps mirror deviation that the median check scored as fully consistent. Per-judge mirror deviation exists in the execution history but is never aggregated.
+
+**Positional bias under the counterfactual swap.** On the same balanced fixture, judge-1 (Nova) accepted conduct-based acceptance in the original run ("launching the campaign with the deliverable... can be interpreted as acceptance in substance", 5000) then denied the identical reasoning in its mirrored run ("this does not constitute formal acceptance", 0) - the model contradicted its own reading of the same facts when told the party roles were reversed. The counterfactual swap framing measurably biases models toward the conservative literal interpretation. The mirroring logic does produce genuine self-disagreement on ambiguous cases; that signal is currently unused (see the median-blindness limitation above).
+
+Both findings are real, reproducible, and intentionally left unfixed for the hackathon window; they belong in the pitch as honesty about the bias-eval surface (P1 bias-eval dashboard is the designed home for them).
