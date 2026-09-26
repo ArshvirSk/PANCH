@@ -71,19 +71,42 @@
 **Not yet done / next:**
 - Arshvir: review, merge and run `cdk deploy --all` so the CORS, S3, Amplify env and security-header changes go live. Then merge to `main` for the first Amplify build.
 - A signed-in run against the real Cognito pool needs the app client ID (SSM `/panch/auth/userPoolClientId`), which this machine could not read.
+
 ## Phase 6: Workflow Stubs and State Machine (Arshvir, branch a/feat/day2-workflow, 2026-09-26)
 - Created stub handlers for all Step Functions tasks (intake, blind, judge 1-3, crossExam, swapTest, aggregate, presiding, publish, settle, failHandler).
 - Built the Tribunal Step Functions state machine in \WorkflowStack\ utilizing the stub Lambdas, a Parallel state for the three judges, and a Choice state for escalation.
-- Added a \ailHandler\ lambda as a Catch path fallback to serve cached rulings for demo cases.
+- Added a \failHandler\ lambda as a Catch path fallback to serve cached rulings for demo cases.
 - Wired \POST /cases/{id}/submit\ and \POST /demo/run\ to \StartExecution\ via \ApiStack\.
 - Updated \GET /cases/{id}\ to return the Step Functions execution status and current stage by pulling history from \DescribeExecution\ and \GetExecutionHistory\.
 - Added new API endpoints: \GET /reviews\, \POST /reviews/{caseId}\, \GET /rulings\, \GET /rulings/{id}\, \GET /rulings/{id}/verify\.
 - Added unit tests for the stub handlers and the reviews API, ensuring Vitest covers the fallback and escalation behaviors.
+
 - Fixed missing CloudFront OAC for the rulings bucket, API Gateway throttle for /demo/run, and DynamoDB daily cap for demo runs.
 
 ### Day 2 Verification Notes
 - **Check 5 (Escalation/Review)**: Validated via a manual DynamoDB status override plus direct Lambda invoke rather than an organic escalation and a real authenticated API call. This ensures honest documentation.
 
+## Phase 7: Tribunal judges (Rutu, branch `r/feat/judges`, 2026-09-26)
+**Built:**
+- Added the blind-case pipeline entry point in [services/tribunal/blind.ts](services/tribunal/blind.ts) to anonymize party names, countries, and platform references before judge review.
+- Added the judge handler implementations in [services/tribunal/judges/judge-1.ts](services/tribunal/judges/judge-1.ts), [services/tribunal/judges/judge-2.ts](services/tribunal/judges/judge-2.ts), and [services/tribunal/judges/judge-3.ts](services/tribunal/judges/judge-3.ts).
+- Added prompt files in [services/tribunal/prompts/judge-1.md](services/tribunal/prompts/judge-1.md), [services/tribunal/prompts/judge-2.md](services/tribunal/prompts/judge-2.md), and [services/tribunal/prompts/judge-3.md](services/tribunal/prompts/judge-3.md).
+- Added shared judge sanitization utilities in [services/tribunal/judges/shared.ts](services/tribunal/judges/shared.ts) to enforce evidence-backed findings before returning the structured output.
+- After syncing with `main`, handlers were relocated onto main's canonical stubs paths (services/tribunal/stubs/) so the state machine and unit tests keep working; the old-path files were removed.
+
+**Checks run:**
+- Installed workspace dependencies with `npm install`.
+- Verified type safety with `npx tsc --noEmit` — this completed successfully with no TypeScript errors.
+- Attempted the required AWS validation command `aws sts get-caller-identity` and the SSM model-ID fetches before any Bedrock call, but the local environment does not have an active AWS profile/configured SSO session. The call remains blocked until the `panch` AWS login/profile is available in this shell.
+
+**Session 2 update (sync + retest, same day):**
+- Synced with `main` (Day 2 workflow stubs): relocated the real blind and judge handlers onto main's canonical `services/tribunal/stubs/` paths (`blind.ts`, `judge-1.ts`, `judge-2.ts`, `judge-3.ts`, shared utilities in `judgesShared.ts`), deleted the old-path duplicates, and adopted main's `panch-evidence/{caseId}/blinded.json` key template. Tightened evidence-ID sanitization: when the blinded case file lists real evidence IDs, findings may only cite those (the `e-*` prefix fallback now applies only when no ground-truth IDs exist).
+- No conflicts in `services/shared/` or `infra/` (auto-merged); sole conflict was `docs/dev-process/LOG.md` (both branches appended a Phase 6 entry; kept both, renumbered this entry to Phase 7).
+- Fixed pre-existing breaks that came in from main: `services/api/cases.ts` null-guarded `stateEnteredEventDetails`, and web learned the new `CaseStatus.FAILED` (actions, label, step rendering) — typecheck, lint, and all 295 tests now pass.
+- Re-attempted AWS validation, still blocked: `aws sts get-caller-identity` → exit 127, the AWS CLI is not installed on this machine; probing SSM through the project's own SDK (`@aws-sdk/client-ssm`) returns `CredentialsProviderError: Could not load credentials from any providers`. No `~/.aws/credentials`, no `~/.aws/config`, no `AWS_*` env vars on this machine.
+
+**Current blocker:**
+- Bedrock validation (steps: SSM model-ID reads, per-judge Bedrock runs, schema + evidence-citation checks, end-to-end execution) has **not** run and **nothing is validated**. It stays blocked until this machine is authenticated to AWS (e.g. `aws sso login` with the panch profile, or provisioned credentials). Per session rules, no validation results are logged until `aws sts get-caller-identity` actually succeeds.
 ## Phase 8: Demo ship gate — public demo polling, real publishing, live auth proof (Arshvir, 2026-09-27)
 **Built (branch `a/fix/demo-public-polling`, merged as PR #7 after PR #6 unblocked CI):**
 - `CaseItem.isDemo` (set only by `POST /demo/run`): `GET /cases/{id}` stays a public method so the ship gate (PRD F10) works logged out, but the Lambda enforces the scope — demo cases return a trimmed projection (no party identifiers); every other case requires a valid Cognito ID token (`aws-jwt-verify`), restoring the previous Cognito behavior for real disputing parties.
