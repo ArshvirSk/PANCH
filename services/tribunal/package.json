@@ -2,7 +2,9 @@
   "name": "tribunal",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "test": "vitest run"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

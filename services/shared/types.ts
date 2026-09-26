@@ -5,7 +5,8 @@ export enum CaseStatus {
   DELIBERATING = 'DELIBERATING',
   ESCALATED = 'ESCALATED',
   RULED = 'RULED',
-  SETTLED = 'SETTLED'
+  SETTLED = 'SETTLED',
+  FAILED = 'FAILED'
 }
 
 export enum LedgerEvent {

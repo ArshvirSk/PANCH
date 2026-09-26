@@ -71,3 +71,11 @@
 **Not yet done / next:**
 - Arshvir: review, merge and run `cdk deploy --all` so the CORS, S3, Amplify env and security-header changes go live. Then merge to `main` for the first Amplify build.
 - A signed-in run against the real Cognito pool needs the app client ID (SSM `/panch/auth/userPoolClientId`), which this machine could not read.
+## Phase 6: Workflow Stubs and State Machine (Arshvir, branch a/feat/day2-workflow, 2026-09-26)
+- Created stub handlers for all Step Functions tasks (intake, blind, judge 1-3, crossExam, swapTest, aggregate, presiding, publish, settle, failHandler).
+- Built the Tribunal Step Functions state machine in \WorkflowStack\ utilizing the stub Lambdas, a Parallel state for the three judges, and a Choice state for escalation.
+- Added a \ailHandler\ lambda as a Catch path fallback to serve cached rulings for demo cases.
+- Wired \POST /cases/{id}/submit\ and \POST /demo/run\ to \StartExecution\ via \ApiStack\.
+- Updated \GET /cases/{id}\ to return the Step Functions execution status and current stage by pulling history from \DescribeExecution\ and \GetExecutionHistory\.
+- Added new API endpoints: \GET /reviews\, \POST /reviews/{caseId}\, \GET /rulings\, \GET /rulings/{id}\, \GET /rulings/{id}/verify\.
+- Added unit tests for the stub handlers and the reviews API, ensuring Vitest covers the fallback and escalation behaviors.
