@@ -4,7 +4,7 @@
 **Duration:** 3 Days (compressed timeline — replaces the earlier 14-day Phases 1-6)
 **Effort:** Full days, paste-one-prompt-at-a-time execution, deploy and check before moving on
 
-> This plan supersedes the original 14-day phase breakdown. See `Arshvir_prompts.md` (3-day prompts) for the exact prompts run each day. Ownership, contracts, and the cut list below carry over unchanged.
+> This plan supersedes the original 14-day phase breakdown. See `Arshvir_prompts.md`, `Rutu_3day_prompts.md` for the exact prompts run each day. Ownership, contracts, and the cut list below carry over unchanged except where marked **[UPDATED]**.
 
 ## 1. Ownership Map
 
@@ -12,9 +12,9 @@ Each directory is strictly owned by one member. No directory has two owners.
 
 | Member      | Strengths                 | Directory Ownership                           | Responsibilities                                                                                                        |
 | :---------- | :------------------------ | :-------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
-| **Arshvir** | AWS, Backend, DevOps      | `/infra`, `/services/api`, `/services/shared` | CDK stacks (Data, Auth, Api, Web, Workflow, Obs), API Gateway, DynamoDB ledger, Lambda handlers, shared types/contracts |
+| **Arshvir** | AWS, Backend, DevOps      | `/infra`, `/services/api`, `/services/shared` | CDK stacks, API Gateway, DynamoDB ledger, Lambda handlers, shared types/contracts, **[UPDATED]** review API routes |
 | **Rutu**    | AI/ML, Prompting, Data    | `/services/tribunal`, `/bench`                | Step Functions handler logic, Bedrock prompts, Guardrail config, demo cases, fallback rulings                           |
-| **Piyush**  | Frontend, Design, Writing | `/web`, `/docs`                               | Next.js app, Amplify hosting (GitHub-connected), UI/UX, documentation                                                   |
+| **Piyush**  | Frontend, Design, Writing | `/web`, `/docs`                               | Next.js app, Amplify hosting, UI/UX, documentation, **[UPDATED]** human review queue UI                                 |
 
 **Rule for Shared Files:** `services/shared` (types, schemas, ledger logic, handler I/O contracts) is owned by **Arshvir**. Rutu and Piyush must submit a PR and wait for Arshvir's review to change any shared contract.
 
@@ -80,6 +80,16 @@ Typed input/output for every task: `intake`, `blind`, `judge` (input: judge name
 - `/panch/models/judge-1`, `/panch/models/judge-2`, `/panch/models/judge-3`, `/panch/models/presiding`
 - `/panch/config/max-crossexam-rounds`
 
+### H. Human Review (light version)
+
+- **GET `/reviews`** (Cognito-authorized, any signed-in user for the hackathon demo — no separate reviewer role) → list of cases with `status: ESCALATED`, each with the panel's judge outputs, spread, swap-test result if available, and case summary.
+- **POST `/reviews/{caseId}`**
+  - Req: `{ "payeeShareBps": 7000, "note": "string" }`
+  - Res: `{ "caseId": "c-123", "status": "RESOLVED" }`
+  - Effect: writes a `Rulings` entry marked `humanReviewed: true`, appends `RESOLVE` then `RELEASE` to the ledger via the existing ledger library. Same settlement path the AI presiding judge uses — no new ledger logic.
+- No separate reviewer Cognito group or role. Any authenticated user can act as reviewer for the demo; this is stated plainly in the README as a scope cut, not hidden.
+- This does not change `Cases`, `Evidence`, or `Ledger` item shapes. It reads `Rulings`/`Cases` where `status = ESCALATED` and writes through the existing settle path.
+
 ---
 
 ## 3. Day-by-Day Plan
@@ -112,18 +122,23 @@ Run one prompt per day (`Arshvir_prompts.md`), deploy, and check before moving o
 
 **Checkpoint:** `/demo/run` runs end-to-end against fixture handlers, PR opened, LOG.md updated. Rutu given a CLI one-liner to start executions without being blocked on the API.
 
-### Day 3: Harden, observe, freeze
+### Day 2 addition: Arshvir
 
-**Owner: Arshvir** (branch `a/feat/day3-harden`) — **feature freeze on new functionality**
+Add to Day 2's API wiring track, after the Route (Choice) state is wired: implement `GET /reviews` and `POST /reviews/{caseId}` per contract section H above. Both reuse the existing ledger library — no new state machine logic. This can be the last item of Day 2 or the first item of Day 3 depending on time; it's small (reads + one settle call).
 
-| Track      | Work                                                                                                                                                                                                                                                                         |
-| :--------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cost & Obs | Per-case Bedrock token counts → `costUsd` from an SSM price table; minimal ObsStack (one dashboard: executions, failures, stage durations, throttles, tokens, `/demo/run` count, API 5xx) + alarms; X-Ray on                                                                 |
-| Security   | Least-privilege IAM review, no public buckets, SSE-KMS everywhere, no secrets in repo, Guardrails before every judge call, presigned URL limits — write short `docs/SECURITY.md`                                                                                             |
-| Edge cases | Duplicate submit, evidence after deadline, respondent never responds, retry after `FAILED`                                                                                                                                                                                   |
-| Ship-gate  | Fresh checkout (`npm ci`, `cdk synth`, clean deploy) from `main`; 3x logged-out `/demo/run` to verified ruling for all 3 demo cases with confirmed fallbacks; README/TRD updated where implementation differs; list anything that could fail the ship gate with a mitigation |
+### Day 3: Harden, observe, freeze — **[UPDATED]**
 
-**Checkpoint:** Final report + LOG.md entry. Submission-ready.
+**Owner: Arshvir** (branch `a/feat/day3-harden`), **Piyush builds the review queue UI in parallel** (branch `p/feat/review-queue`)
+
+| Track              | Work                                                                                                                                                                                                                                                                         |
+| :----------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cost & Obs         | Per-case Bedrock token counts → `costUsd` from an SSM price table; minimal ObsStack (one dashboard: executions, failures, stage durations, throttles, tokens, `/demo/run` count, API 5xx) + alarms; X-Ray on                                                                 |
+| Security           | Least-privilege IAM review, no public buckets, SSE-KMS everywhere, no secrets in repo, Guardrails before every judge call, presigned URL limits — write short `docs/SECURITY.md`                                                                                             |
+| Edge cases         | Duplicate submit, evidence after deadline, respondent never responds, retry after `FAILED`                                                                                                                                                                                   |
+| **Review queue UI**| **[NEW, Piyush]** A simple `/reviews` page behind normal sign-in: lists escalated cases (case summary, amount, the three judges' outputs side by side, spread, swap-test result if present). A form to enter the final `payeeShareBps` and a note, calling `POST /reviews/{caseId}`. No separate reviewer role or invite flow — reuses existing auth. Plain, functional, not styled to the same polish as the rest of the app; this is P1, not the centerpiece. |
+| Ship-gate          | Fresh checkout (`npm ci`, `cdk synth`, clean deploy) from `main`; 3x logged-out `/demo/run` to verified ruling for all 3 demo cases with confirmed fallbacks; confirm `/reviews` works logged in, and confirm an escalated case actually appears there and can be resolved end to end. |
+
+**Checkpoint:** Final report + LOG.md entry. Submission-ready. Plus one escalated case resolved through the review queue as part of the final ship-gate check.
 
 ---
 
@@ -148,7 +163,7 @@ Run one prompt per day (`Arshvir_prompts.md`), deploy, and check before moving o
 ## 6. Cut List (in order, if behind schedule)
 
 1. Solidity contract escrow
-2. Human review queue (always auto-resolve or fail gracefully)
+2. ~~Human review queue~~ → **restored as P1, light version (section H above). If Day 3 runs out of time, cut the UI first and leave `/reviews` and `POST /reviews/{caseId}` reachable via a raw API call for the demo — the escalation decision and settlement logic still work, just without a page for it.**
 3. Appeal window (settle immediately in all modes)
 4. SES email notifications (assume users poll the timeline)
 5. WAF
@@ -167,6 +182,7 @@ Run one prompt per day (`Arshvir_prompts.md`), deploy, and check before moving o
 | **Bedrock quotas/throttling:** Rutu hits rate limits.                                               | Backoff + retry built into WorkflowStack (Day 2); demo cases fall back to cached rulings on `FAILED`.                   |
 | **Frontend waiting on Auth:** Piyush needs to test login.                                           | AuthStack deployed Day 1; public routes stay unauthenticated so demo mode doesn't need it.                              |
 | **Manual Amplify/GitHub connection needed.**                                                        | Arshvir stops and gives Piyush the exact console steps rather than guessing.                                            |
+| **Review queue is a late addition and could eat Day 3 time.**                                       | It's deliberately scoped light: no new role, no new ledger logic, reuses existing auth and settle path. If it slips, cut the UI only and demo the escalation via a direct API call instead. |
 
 ---
 
@@ -175,3 +191,5 @@ Run one prompt per day (`Arshvir_prompts.md`), deploy, and check before moving o
 **Rutu (after Day 1 step 6 lands):** Build handlers against the contracts in `services/shared` and test with the fixture. Judge-3 (Llama) runs in JSON mode through the shared wrapper. Use the shared model wrapper for every call. Put prompts in `services/tribunal/prompts`, the Guardrail config as a JSON file, and three demo cases plus fallback rulings in `bench/demo`. Ping before needing real Bedrock access.
 
 **Piyush (Day 1):** Clone, run the mock server, build against it. Point at the real API URL once it's sent at the end of Day 1. Connect the repo to Amplify after Arshvir does the one-time GitHub connection.
+
+**Piyush (Day 3):** Build the `/reviews` queue page once Arshvir's `GET /reviews` and `POST /reviews/{caseId}` are live — check with him before starting so you're not blocked. Keep it simple: a list, the panel outputs, a form. This is P1, don't spend design time on it. If you're behind on Day 3, tell Arshvir and we cut the UI, not the API — he can demo escalation with a raw request if needed.
