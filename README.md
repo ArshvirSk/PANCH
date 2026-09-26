@@ -72,8 +72,38 @@ The case progression is managed through REST API endpoints. You no longer need t
    - Transitions case to `DELIBERATING` and locks further uploads. (This will soon trigger the AI Step Functions).
 
 ### Public Routes
-- **Health Check:** `GET /health` (Returns `{ ok: true, version: "1.0.0" }`)
+- **Health Check:** `GET /health` (Returns `{ status: "ok", timestamp: "..." }`)
 - **Demo Mode:** `POST /demo/run` (Triggers a quick, unauthenticated demo simulation).
+
+### Frontend status (built)
+
+The `web/` app covers everything above. It is a Next.js static export, hosted by the Amplify app in `WebStack`.
+
+| Page | Login | What it does |
+|---|---|---|
+| `/` | No | Landing page, **Run demo case** (`POST /demo/run`), API health in the footer (`GET /health`) |
+| `/login/` | No | Sign in, create account (email), confirm the emailed code. Uses `USER_PASSWORD_AUTH`, the only flow the Cognito app client enables |
+| `/cases/` | Yes | Cases opened on this device (the API has no list route yet), open a case by ID |
+| `/cases/new/` | Yes | Create a case as claimant (`POST /cases`) |
+| `/case/?id=` | Yes | Fund as respondent, dispute, upload evidence (presigned S3 PUT), submit, live polling while deliberating, ledger receipts |
+| `/ruling/?id=` | No | Public ruling: award split, cited findings, clauses, reasoning (`GET /rulings/{id}`) |
+
+Every protected call sends the Cognito ID token in `Authorization`. Roles come from the case: the claimant is the creator's Cognito `sub`, and the respondent is the account whose email matches `respondentEmail`.
+
+**Run locally:**
+```bash
+cp web/.env.example web/.env.local   # fill in the API URL and Cognito IDs
+npm run dev --workspace=web          # http://localhost:3000
+npm run build --workspace=web        # static site in web/out
+```
+
+**Before the deployed site works end to end, run one `cdk deploy --all` from branch `p/feat/web-frontend` (Arshvir):**
+- API CORS allows the Amplify origin (today only `http://localhost:3000` passes preflight), and API Gateway 401s carry CORS headers.
+- The evidence bucket gets a PUT CORS rule. Without it, browsers cannot upload to the presigned URL.
+- The Amplify app gets `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USER_POOL_ID` and `NEXT_PUBLIC_USER_POOL_CLIENT_ID` from the stacks. Builds use `/amplify.yml`.
+- `GET /rulings/c-104` returns the fixture ruling instead of an empty body.
+
+After the deploy, merging to `main` triggers the Amplify build. The site URL is the `PanchWebStack.WebUrl` output.
 
 ---
 
