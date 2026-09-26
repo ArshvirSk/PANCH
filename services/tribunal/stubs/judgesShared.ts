@@ -54,9 +54,13 @@ export function sanitizeJudgeOutput(output: JudgeOutput, fileKey: string): Judge
     // Ignore malformed case files; the downstream schema validation will fail if the output is invalid.
   }
 
+  // When the case file lists real evidence IDs, findings may only cite those.
+  // The e-* prefix fallback applies only when no ground-truth IDs are available.
+  const evidenceKnown = validEvidenceIds.size > 0;
+
   const sanitizedFindings = (output.findingsOfFact ?? []).filter((finding) => {
     const evidenceIds = Array.isArray(finding.evidenceIds) ? finding.evidenceIds : [];
-    const hasValidEvidence = evidenceIds.length > 0 && evidenceIds.some((id) => validEvidenceIds.has(String(id)) || String(id).startsWith('e-'));
+    const hasValidEvidence = evidenceIds.length > 0 && evidenceIds.some((id) => validEvidenceIds.has(String(id)) || (!evidenceKnown && String(id).startsWith('e-')));
     const factText = String(finding.fact ?? '').trim();
     return Boolean(factText) && hasValidEvidence;
   });

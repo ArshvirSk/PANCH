@@ -4,12 +4,15 @@ import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 import { DataStack } from './DataStack';
+import { WorkflowStack } from './WorkflowStack';
 
 export interface ApiStackProps extends cdk.StackProps {
   userPool: cognito.UserPool;
   dataStack: DataStack;
+  workflowStack: WorkflowStack;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -21,19 +24,13 @@ export class ApiStack extends cdk.Stack {
     this.api = new apigw.RestApi(this, 'PanchApi', {
       restApiName: 'Panch Service API',
       defaultCorsPreflightOptions: {
-        // Any origin is safe here: auth is a bearer ID token in the Authorization header, never a cookie.
-        // (Previously ['http://localhost:3000', ALL_ORIGINS], which nested an array and only allowed localhost.)
         allowOrigins: apigw.Cors.ALL_ORIGINS,
         allowMethods: apigw.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
       },
-      deployOptions: {
-        tracingEnabled: true,
-      }
+      deployOptions: { tracingEnabled: true }
     });
 
-    // Errors raised by API Gateway itself (e.g. 401 from the Cognito authorizer) skip the Lambdas,
-    // so they need CORS headers here or the browser hides the status from the frontend.
     const corsErrorHeaders = { 'Access-Control-Allow-Origin': "'*'", 'Access-Control-Allow-Headers': "'*'" };
     this.api.addGatewayResponse('Default4xx', { type: apigw.ResponseType.DEFAULT_4XX, responseHeaders: corsErrorHeaders });
     this.api.addGatewayResponse('Default5xx', { type: apigw.ResponseType.DEFAULT_5XX, responseHeaders: corsErrorHeaders });
@@ -48,13 +45,11 @@ export class ApiStack extends cdk.Stack {
       handler: 'handler',
       entry: path.join(__dirname, '../../services/api/health.ts'),
     });
-
     this.api.root.addResource('health').addMethod('GET', new apigw.LambdaIntegration(healthLambda));
 
     const cases = this.api.root.addResource('cases');
     const caseId = cases.addResource('{id}');
 
-    // POST /cases
     const createCaseLambda = new nodejs.NodejsFunction(this, 'CreateCaseHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'create',
@@ -64,7 +59,6 @@ export class ApiStack extends cdk.Stack {
     props.dataStack.casesTable.grantReadWriteData(createCaseLambda);
     cases.addMethod('POST', new apigw.LambdaIntegration(createCaseLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
 
-    // GET /cases/{id}
     const getCaseLambda = new nodejs.NodejsFunction(this, 'GetCaseHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'getCase',
@@ -72,9 +66,12 @@ export class ApiStack extends cdk.Stack {
       environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
     });
     props.dataStack.casesTable.grantReadData(getCaseLambda);
+    getCaseLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['states:DescribeExecution', 'states:GetExecutionHistory'],
+      resources: [props.workflowStack.stateMachine.stateMachineArn, props.workflowStack.stateMachine.stateMachineArn.replace(':stateMachine:', ':execution:')]
+    }));
     caseId.addMethod('GET', new apigw.LambdaIntegration(getCaseLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
 
-    // POST /cases/{id}/fund
     const fundLambda = new nodejs.NodejsFunction(this, 'FundHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'fund',
@@ -85,7 +82,6 @@ export class ApiStack extends cdk.Stack {
     props.dataStack.ledgerTable.grantReadWriteData(fundLambda);
     caseId.addResource('fund').addMethod('POST', new apigw.LambdaIntegration(fundLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
 
-    // POST /cases/{id}/dispute
     const disputeLambda = new nodejs.NodejsFunction(this, 'DisputeHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'dispute',
@@ -96,7 +92,6 @@ export class ApiStack extends cdk.Stack {
     props.dataStack.ledgerTable.grantReadWriteData(disputeLambda);
     caseId.addResource('dispute').addMethod('POST', new apigw.LambdaIntegration(disputeLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
 
-    // POST /cases/{id}/evidence
     const evidenceLambda = new nodejs.NodejsFunction(this, 'EvidenceUrlHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'evidenceUrl',
@@ -106,34 +101,79 @@ export class ApiStack extends cdk.Stack {
     props.dataStack.evidenceBucket.grantPut(evidenceLambda);
     caseId.addResource('evidence').addMethod('POST', new apigw.LambdaIntegration(evidenceLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
     
-    // POST /cases/{id}/submit
     const submitLambda = new nodejs.NodejsFunction(this, 'SubmitHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'submit',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
-      environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
+      environment: { CASES_TABLE: props.dataStack.casesTable.tableName, STATE_MACHINE_ARN: props.workflowStack.stateMachine.stateMachineArn }
     });
     props.dataStack.casesTable.grantReadWriteData(submitLambda);
+    submitLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['states:StartExecution'],
+      resources: [props.workflowStack.stateMachine.stateMachineArn]
+    }));
     caseId.addResource('submit').addMethod('POST', new apigw.LambdaIntegration(submitLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
 
-    // Stubs
-    const publicStubsLambda = new nodejs.NodejsFunction(this, 'PublicStubsHandler', {
+    // Reviews (Human Review API)
+    const reviews = this.api.root.addResource('reviews');
+    const getReviewsLambda = new nodejs.NodejsFunction(this, 'GetReviewsHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'getRuling',
-      entry: path.join(__dirname, '../../services/api/publicStubs.ts'),
+      handler: 'getReviews',
+      entry: path.join(__dirname, '../../services/api/reviews.ts'),
+      environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
     });
-    
-    this.api.root.addResource('rulings').addResource('{id}').addMethod('GET', new apigw.LambdaIntegration(publicStubsLambda));
-    this.api.root.addResource('demo').addResource('run').addMethod('POST', new apigw.LambdaIntegration(new nodejs.NodejsFunction(this, 'DemoRun', {
+    props.dataStack.casesTable.grantReadData(getReviewsLambda);
+    reviews.addMethod('GET', new apigw.LambdaIntegration(getReviewsLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
+
+    const postReviewLambda = new nodejs.NodejsFunction(this, 'PostReviewHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'demoRun',
-      entry: path.join(__dirname, '../../services/api/publicStubs.ts'),
-    })));
-    this.api.root.addResource('bench').addResource('summary').addMethod('GET', new apigw.LambdaIntegration(new nodejs.NodejsFunction(this, 'BenchSummary', {
+      handler: 'postReview',
+      entry: path.join(__dirname, '../../services/api/reviews.ts'),
+      environment: { CASES_TABLE: props.dataStack.casesTable.tableName, LEDGER_TABLE: props.dataStack.ledgerTable.tableName }
+    });
+    props.dataStack.casesTable.grantReadWriteData(postReviewLambda);
+    props.dataStack.ledgerTable.grantReadWriteData(postReviewLambda);
+    reviews.addResource('{caseId}').addMethod('POST', new apigw.LambdaIntegration(postReviewLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
+
+    // Rulings
+    const rulings = this.api.root.addResource('rulings');
+    const getRulingsLambda = new nodejs.NodejsFunction(this, 'GetRulingsHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'getBenchSummary',
-      entry: path.join(__dirname, '../../services/api/publicStubs.ts'),
-    })));
+      handler: 'getRulings',
+      entry: path.join(__dirname, '../../services/api/rulings.ts'),
+      environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
+    });
+    props.dataStack.casesTable.grantReadData(getRulingsLambda);
+    rulings.addMethod('GET', new apigw.LambdaIntegration(getRulingsLambda));
+
+    const getRulingByIdLambda = new nodejs.NodejsFunction(this, 'GetRulingByIdHandler', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'getRulingById',
+      entry: path.join(__dirname, '../../services/api/rulings.ts'),
+    });
+    const rulingId = rulings.addResource('{id}');
+    rulingId.addMethod('GET', new apigw.LambdaIntegration(getRulingByIdLambda));
+
+    const verifyRulingLambda = new nodejs.NodejsFunction(this, 'VerifyRulingHandler', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'verifyRuling',
+      entry: path.join(__dirname, '../../services/api/rulings.ts'),
+    });
+    rulingId.addResource('verify').addMethod('GET', new apigw.LambdaIntegration(verifyRulingLambda));
+
+    // Demo
+    const demoLambda = new nodejs.NodejsFunction(this, 'DemoRunHandler', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'runDemo',
+      entry: path.join(__dirname, '../../services/api/demo.ts'),
+      environment: { CASES_TABLE: props.dataStack.casesTable.tableName, STATE_MACHINE_ARN: props.workflowStack.stateMachine.stateMachineArn }
+    });
+    props.dataStack.casesTable.grantReadWriteData(demoLambda);
+    demoLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['states:StartExecution'],
+      resources: [props.workflowStack.stateMachine.stateMachineArn]
+    }));
+    this.api.root.addResource('demo').addResource('run').addMethod('POST', new apigw.LambdaIntegration(demoLambda));
 
     // Output the API URL
     new cdk.CfnOutput(this, 'ApiUrl', { value: this.api.url });

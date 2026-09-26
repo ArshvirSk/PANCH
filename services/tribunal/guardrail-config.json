@@ -1,0 +1,13 @@
+{
+  "name": "panch-guardrail-placeholder",
+  "description": "Placeholder for Rutu's Guardrail config. To be replaced.",
+  "contentPolicyConfig": {
+    "filtersConfig": [
+      {
+        "type": "HATE",
+        "inputStrength": "HIGH",
+        "outputStrength": "HIGH"
+      }
+    ]
+  }
+}

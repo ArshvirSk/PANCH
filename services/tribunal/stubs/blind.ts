@@ -1,4 +1,4 @@
-import { BlindInput, BlindOutput } from '../shared/step-functions';
+import { BlindInput, BlindOutput } from '../../shared/step-functions';
 
 export function buildBlindedCaseFile(input: BlindInput): string {
   const summary = {
@@ -21,12 +21,12 @@ export function buildBlindedCaseFile(input: BlindInput): string {
   return JSON.stringify(summary, null, 2);
 }
 
-export async function blind(input: BlindInput): Promise<BlindOutput> {
-  const blindedCaseFile = buildBlindedCaseFile(input);
-  const blindedCaseFileS3Key = `blinded/${input.caseId}/case-file.json`;
+export const handler = async (event: BlindInput): Promise<BlindOutput> => {
+  const blindedCaseFile = buildBlindedCaseFile(event);
+  const blindedCaseFileS3Key = `panch-evidence/${event.caseId}/blinded.json`;
 
   return {
-    caseId: input.caseId,
+    caseId: event.caseId,
     blindedCaseFileS3Key
   };
-}
+};
