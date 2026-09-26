@@ -46,7 +46,9 @@ export function stepsFor(status: Status): Step[] {
 export type StepState = 'done' | 'current' | 'upcoming';
 
 export function stepState(steps: Step[], current: Status, index: number): StepState {
-  const currentIndex = steps.findIndex((s) => s.status === current);
+  // A failed case died mid-tribunal, so render it stuck at the deliberation step.
+  const effective = current === 'FAILED' ? 'DELIBERATING' : current;
+  const currentIndex = steps.findIndex((s) => s.status === effective);
   if (currentIndex === -1) return 'upcoming';
   if (index < currentIndex) return 'done';
   if (index === currentIndex) return current === 'SETTLED' ? 'done' : 'current';
@@ -62,6 +64,7 @@ export type CaseAction = 'fund' | 'dispute' | 'uploadEvidence' | 'submit' | 'vie
  */
 export function availableActions(status: Status, role: Role): CaseAction[] {
   if (status === 'RULED' || status === 'SETTLED') return ['viewRuling'];
+  if (status === 'FAILED') return [];
   if (role === 'observer') return [];
   switch (status) {
     case 'CREATED':
@@ -88,6 +91,7 @@ export const STATUS_LABELS: Record<Status, string> = {
   ESCALATED: 'Human review',
   RULED: 'Ruled',
   SETTLED: 'Settled',
+  FAILED: 'Failed',
 };
 
 export type CaseIdResult = { ok: true; id: string } | { ok: false; error: string };
