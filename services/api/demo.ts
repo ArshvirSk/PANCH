@@ -42,7 +42,10 @@ export const runDemo = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       respondentId: 'demo-respondent', 
       amountCents: 50000, 
       currency: 'USD', 
-      createdAt: new Date().toISOString() 
+      createdAt: new Date().toISOString(),
+      // Marks this as the public demo path: GET /cases/{id} is readable without
+      // auth (trimmed of party identifiers). Only set here, never for real cases.
+      isDemo: true,
     };
     
     await docClient.send(new PutCommand({ TableName: CASES_TABLE, Item: item }));

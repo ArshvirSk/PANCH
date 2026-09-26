@@ -42,6 +42,10 @@ export interface CaseItem {
   evidenceDeadline?: string;
   executionArn?: string;
   createdAt: string;
+  // Set only by the /demo/run handler. Marks the case as the public demo path:
+  // GET /cases/{id} is readable without auth for demo cases only (PRD F10),
+  // trimmed of party identifiers; real cases always require Cognito.
+  isDemo?: boolean;
 }
 
 export interface EvidenceItem {

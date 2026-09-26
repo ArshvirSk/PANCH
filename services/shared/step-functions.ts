@@ -49,6 +49,8 @@ export interface AggregateInput {
   caseId: string;
   finalPanelOutputs: Record<string, JudgeOutput>;
   swapOutputs?: Record<string, JudgeOutput>;
+  // Set by the state machine's PrepareAggregate pass (threaded to PRESIDING/PUBLISH).
+  blindedCaseFileS3Key?: string;
 }
 export interface AggregateOutput {
   caseId: string;
@@ -57,6 +59,10 @@ export interface AggregateOutput {
   swapConsistent: boolean;
   escalated: boolean;
   escalationReason?: string;
+  // Carried through AGGREGATE (payloadResponseOnly) so PRESIDING/PUBLISH/SETTLE
+  // still receive the panel outputs and the blinded case file pointer.
+  blindedCaseFileS3Key?: string;
+  finalPanelOutputs?: Record<string, JudgeOutput>;
 }
 
 // Task 7: Presiding
@@ -67,6 +73,13 @@ export interface PresidingInput extends AggregateOutput {
 export interface PresidingOutput {
   caseId: string;
   presidingRulingS3Key: string; // Final synthesized ruling
+  // Passed through (PRESIDING is payloadResponseOnly) so PUBLISH/SETTLE keep their inputs.
+  payeeShareBps?: number;
+  spreadBps?: number;
+  swapConsistent?: boolean;
+  escalated?: boolean;
+  blindedCaseFileS3Key?: string;
+  finalPanelOutputs?: Record<string, JudgeOutput>;
 }
 
 // Task 8: Publish
@@ -75,6 +88,8 @@ export interface PublishInput extends PresidingOutput {
   spreadBps: number;
   swapConsistent: boolean;
   escalated: boolean;
+  // True on the Catch -> FAILED fallback path, where a cached ruling already exists.
+  fallback?: boolean;
 }
 export interface PublishOutput {
   caseId: string;
