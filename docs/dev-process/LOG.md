@@ -71,3 +71,18 @@
 **Not yet done / next:**
 - Arshvir: review, merge and run `cdk deploy --all` so the CORS, S3, Amplify env and security-header changes go live. Then merge to `main` for the first Amplify build.
 - A signed-in run against the real Cognito pool needs the app client ID (SSM `/panch/auth/userPoolClientId`), which this machine could not read.
+
+## Phase 6: Tribunal judges (Rutu, branch `r/feat/judges`, 2026-09-26)
+**Built:**
+- Added the blind-case pipeline entry point in [services/tribunal/blind.ts](services/tribunal/blind.ts) to anonymize party names, countries, and platform references before judge review.
+- Added the judge handler implementations in [services/tribunal/judges/judge-1.ts](services/tribunal/judges/judge-1.ts), [services/tribunal/judges/judge-2.ts](services/tribunal/judges/judge-2.ts), and [services/tribunal/judges/judge-3.ts](services/tribunal/judges/judge-3.ts).
+- Added prompt files in [services/tribunal/prompts/judge-1.md](services/tribunal/prompts/judge-1.md), [services/tribunal/prompts/judge-2.md](services/tribunal/prompts/judge-2.md), and [services/tribunal/prompts/judge-3.md](services/tribunal/prompts/judge-3.md).
+- Added shared judge sanitization utilities in [services/tribunal/judges/shared.ts](services/tribunal/judges/shared.ts) to enforce evidence-backed findings before returning the structured output.
+
+**Checks run:**
+- Installed workspace dependencies with `npm install`.
+- Verified type safety with `npx tsc --noEmit` — this completed successfully with no TypeScript errors.
+- Attempted the required AWS validation command `aws sts get-caller-identity` and the SSM model-ID fetches before any Bedrock call, but the local environment does not have an active AWS profile/configured SSO session. The call remains blocked until the `panch` AWS login/profile is available in this shell.
+
+**Current blocker:**
+- Bedrock validation step is still pending because this machine is not authenticated to AWS. Until `aws sts get-caller-identity` succeeds and the SSM parameter values are readable, the real model calls cannot be validated as required for Session 1.
