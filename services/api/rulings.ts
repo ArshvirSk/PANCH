@@ -23,8 +23,16 @@ export const getRulings = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 
 export const getRulingById = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const caseId = event.pathParameters?.id!;
-  const domain = process.env.RULINGS_DOMAIN || 'd12345.cloudfront.net';
-  return respond(200, { caseId, rulingUrl: `https://${domain}/panch-rulings/${caseId}/ruling.json` });
+  const domain = process.env.RULINGS_DOMAIN || '';
+  if (!domain) return respond(500, { error: 'Rulings distribution not configured' });
+  try {
+    // S3 key panch-rulings/{caseId}/ruling.json behind a bucket-root CloudFront origin.
+    const res = await fetch(`https://${domain}/panch-rulings/${encodeURIComponent(caseId)}/ruling.json`);
+    if (res.status === 403 || res.status === 404) return respond(404, { error: 'Ruling not published' });
+    if (!res.ok) return respond(502, { error: 'Failed to fetch ruling' });
+    const ruling = await res.json();
+    return respond(200, ruling);
+  } catch (err: any) { return respond(502, { error: 'Failed to fetch ruling' }); }
 };
 
 export const verifyRuling = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {

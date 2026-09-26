@@ -11,6 +11,9 @@ import { WorkflowStack } from './WorkflowStack';
 
 export interface ApiStackProps extends cdk.StackProps {
   userPool: cognito.UserPool;
+  // Used by the GET /cases/{id} Lambda-side JWT check for non-demo cases
+  // (the route itself is public so demo cases stay readable logged out).
+  userPoolClient: cognito.UserPoolClient;
   dataStack: DataStack;
   workflowStack: WorkflowStack;
 }
@@ -71,14 +74,37 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'getCase',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
-      environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
+      environment: {
+        CASES_TABLE: props.dataStack.casesTable.tableName,
+        // JWT verification for non-demo cases (the method is public; demo cases
+        // are readable logged out, everything else requires a valid ID token).
+        USER_POOL_ID: props.userPool.userPoolId,
+        USER_POOL_CLIENT_ID: props.userPoolClient.userPoolClientId,
+      },
     });
     props.dataStack.casesTable.grantReadData(getCaseLambda);
     getCaseLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: ['states:DescribeExecution', 'states:GetExecutionHistory'],
-      resources: [props.workflowStack.stateMachine.stateMachineArn, props.workflowStack.stateMachine.stateMachineArn.replace(':stateMachine:', ':execution:')]
+      resources: [
+        props.workflowStack.stateMachine.stateMachineArn,
+        // Executions live under 'arn:...:execution:<name>:<execId>'. The :* wildcard is
+        // required or every stage lookup is AccessDenied (silently swallowed by the
+        // Lambda's catch). The name is pulled from the ARN token with Fn.split/Fn.select
+        // because tokens cannot be string-manipulated at synth time.
+        cdk.Arn.format({
+          service: 'states',
+          resource: 'execution',
+          resourceName: `${cdk.Fn.select(6, cdk.Fn.split(':', props.workflowStack.stateMachine.stateMachineArn))}:*`,
+          arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+        }, this),
+      ]
     }));
-    caseId.addMethod('GET', new apigw.LambdaIntegration(getCaseLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
+    // Public read (no Cognito): the ship gate (PRD F10) requires a logged-out visitor to
+    // run /demo/run and poll the case to its ruling. This is a read-only mirror of the
+    // already-public GET /rulings/{id}; the Lambda trims party identifiers for
+    // unauthenticated callers, so no personal data is exposed. All mutating /cases
+    // routes stay Cognito-authorized.
+    caseId.addMethod('GET', new apigw.LambdaIntegration(getCaseLambda));
 
     const fundLambda = new nodejs.NodejsFunction(this, 'FundHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,

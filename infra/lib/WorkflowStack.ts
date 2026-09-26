@@ -94,8 +94,15 @@ export class WorkflowStack extends cdk.Stack {
     const aggregateLambda = createLambda('AggregateLambda', 'aggregate.ts');
     const presidingLambda = createLambda('PresidingLambda', 'presiding.ts');
     const publishLambda = createLambda('PublishLambda', 'publish.ts');
+    // publish.ts writes panch-rulings/{caseId}/ruling.json to the public rulings bucket.
+    props.dataStack.rulingsBucket.grantWrite(publishLambda);
+    publishLambda.addEnvironment('RULINGS_BUCKET', props.dataStack.rulingsBucket.bucketName);
     const settleLambda = createLambda('SettleLambda', 'settle.ts');
     const failLambda = createLambda('FailLambda', 'failHandler.ts');
+    // The rulings bucket is SSE-KMS: PutObject (publish + cached fallback) needs
+    // kms:GenerateDataKey/Encrypt, and failHandler's CopyObject also needs Decrypt.
+    props.dataStack.kmsKey.grantEncryptDecrypt(publishLambda);
+    props.dataStack.kmsKey.grantEncryptDecrypt(failLambda);
 
     // State Machine Tasks
     const intakeTask = new tasks.LambdaInvoke(this, 'INTAKE', { lambdaFunction: intakeLambda, payloadResponseOnly: true });
