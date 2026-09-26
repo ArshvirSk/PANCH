@@ -5,12 +5,19 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { PutCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { SFNClient, StartExecutionCommand, DescribeExecutionCommand, GetExecutionHistoryCommand } from '@aws-sdk/client-sfn';
 import { docClient, appendLedgerEntry, validateTransition, CaseStatus, LedgerEvent } from '../shared';
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
 const s3Client = new S3Client({});
 const sfnClient = new SFNClient({});
 const CASES_TABLE = process.env.CASES_TABLE || '';
 const EVIDENCE_BUCKET = process.env.EVIDENCE_BUCKET || '';
 const STATE_MACHINE_ARN = process.env.STATE_MACHINE_ARN || '';
+const USER_POOL_ID = process.env.USER_POOL_ID || '';
+const USER_POOL_CLIENT_ID = process.env.USER_POOL_CLIENT_ID || '';
+// Reused across invocations; verifier caches JWKS and keys.
+const idVerifier = USER_POOL_ID && USER_POOL_CLIENT_ID
+  ? CognitoJwtVerifier.create({ userPoolId: USER_POOL_ID, tokenUse: 'id', clientId: USER_POOL_CLIENT_ID })
+  : null;
 
 function respond(statusCode: number, body: any): APIGatewayProxyResult {
   return { statusCode, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body) };
@@ -112,6 +119,30 @@ export const getCase = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       } catch (e) {
         console.error("Could not fetch execution details", e);
       }
+    }
+    // Demo cases (isDemo, set only by POST /demo/run) are readable without auth:
+    // the ship gate (PRD F10) requires a logged-out visitor to run /demo/run and
+    // poll to a ruling. Every other case requires a valid Cognito ID token,
+    // checked here because the API method itself must stay public for demos.
+    // Non-demo callers always get the full item; callers we could not authenticate
+    // (anonymous demo visitors) get a trimmed projection without party identifiers.
+    let authedSub: string | null = event.requestContext?.authorizer?.claims?.sub ?? null;
+    if (caseItem.isDemo !== true && !authedSub) {
+      const token = (event.headers?.Authorization || event.headers?.authorization || '').replace(/^Bearer\s+/i, '');
+      if (!idVerifier || !token) return respond(401, { error: 'Unauthorized' });
+      try {
+        const payload = await idVerifier.verify(token);
+        authedSub = (payload as { sub?: string }).sub ?? null;
+      } catch {
+        return respond(401, { error: 'Unauthorized' });
+      }
+    }
+    if (!authedSub) {
+      const publicCase: Record<string, unknown> = { ...caseItem };
+      delete publicCase.claimantId;
+      delete publicCase.respondentId;
+      delete publicCase.isDemo;
+      return respond(200, publicCase);
     }
     return respond(200, caseItem);
   } catch (err: any) { return respond(500, { error: err.message }); }

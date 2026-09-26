@@ -30,6 +30,10 @@ export const handler = async (event: AggregateInput): Promise<AggregateOutput> =
     spreadBps,
     swapConsistent,
     escalated,
-    escalationReason: escalated ? "High spread or swap inconsistency" : undefined
+    escalationReason: escalated ? "High spread or swap inconsistency" : undefined,
+    // Threaded through so PRESIDING/PUBLISH/SETTLE keep their inputs after
+    // the payloadResponseOnly AGGREGATE task.
+    blindedCaseFileS3Key: event.blindedCaseFileS3Key,
+    finalPanelOutputs: event.finalPanelOutputs,
   };
 };
