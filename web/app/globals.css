@@ -322,6 +322,8 @@ ul, ol { margin: 0; padding: 0; }
 
 /* ---------- Dialog ---------- */
 .dialog { border: none; padding: 0; border-radius: var(--radius-lg); background: var(--surface); color: var(--text); width: min(460px, calc(100vw - 32px)); box-shadow: var(--shadow-lg); }
+/* Centre explicitly rather than relying on each browser's UA modal styles. */
+.dialog[open] { position: fixed; inset: 0; margin: auto; height: fit-content; max-height: calc(100dvh - 32px); overflow: auto; }
 .dialog::backdrop { background: rgba(10, 15, 25, 0.55); backdrop-filter: blur(3px); }
 .dialog[open] { animation: dialog-in 0.18s ease-out; }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
