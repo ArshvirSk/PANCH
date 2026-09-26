@@ -104,7 +104,7 @@ export const getCase = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         if (hist.events) {
           for (const ev of hist.events) {
             if (ev.type === 'TaskStateEntered' && ev.stateEnteredEventDetails) {
-              currentStage = ev.stateEnteredEventDetails.name;
+              currentStage = ev.stateEnteredEventDetails?.name ?? currentStage;
             }
           }
         }
