@@ -32,9 +32,5 @@ export async function invokeJudgeModel<T>(
   params: Omit<InvokeModelParams<T>, 'modelId' | 'mode'>
 ): Promise<T> {
   const config = await getModelConfig(role);
-  return invokeModel<T>({
-    ...params,
-    modelId: config.modelId,
-    mode: config.mode,
-  });
+  return invokeModel<T>(config.modelId, config.mode, params.prompt, params.schema, params.systemPrompt);
 }
