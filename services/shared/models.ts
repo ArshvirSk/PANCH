@@ -4,6 +4,14 @@ import { judgeOutputSchema, crossExamOutputSchema } from './schemas';
 
 const client = new BedrockRuntimeClient({});
 
+export interface InvokeModelParams<T> {
+  modelId: string;
+  mode: 'tool' | 'json';
+  prompt: string;
+  schema: z.ZodType<T>;
+  systemPrompt?: string;
+}
+
 export async function invokeModel<T>(
   modelId: string,
   mode: 'tool' | 'json',

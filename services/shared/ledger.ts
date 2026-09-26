@@ -32,12 +32,12 @@ export function validateTransition(currentStatus: CaseStatus, event: LedgerEvent
       if (currentStatus !== CaseStatus.FUNDED) throw new Error(`Illegal transition: ${currentStatus} -> DISPUTE`);
       return CaseStatus.DISPUTED; // After DISPUTE, it goes to DELIBERATING via /submit, but that's a case status change, not ledger event
     case LedgerEvent.RESOLVE:
-      if (currentStatus === CaseStatus.RESOLVED || currentStatus === CaseStatus.SETTLED) throw new Error('Double-resolve rejected');
-      // Typically transitions from ESCALATED or DELIBERATING, but technically any state before RESOLVED is functionally valid for the ledger if arbitration concludes. We'll enforce it was DELIBERATING or ESCALATED.
+      if (currentStatus === CaseStatus.RULED || currentStatus === CaseStatus.SETTLED) throw new Error('Double-resolve rejected');
+      // Typically transitions from ESCALATED or DELIBERATING, but technically any state before RULED is functionally valid for the ledger if arbitration concludes. We'll enforce it was DELIBERATING or ESCALATED.
       if (currentStatus !== CaseStatus.DELIBERATING && currentStatus !== CaseStatus.ESCALATED) throw new Error(`Illegal transition: ${currentStatus} -> RESOLVE`);
-      return CaseStatus.RESOLVED;
+      return CaseStatus.RULED;
     case LedgerEvent.RELEASE:
-      if (currentStatus !== CaseStatus.RESOLVED) throw new Error(`Illegal transition: ${currentStatus} -> RELEASE`);
+      if (currentStatus !== CaseStatus.RULED) throw new Error(`Illegal transition: ${currentStatus} -> RELEASE`);
       return CaseStatus.SETTLED;
     default:
       throw new Error(`Unknown event ${event}`);

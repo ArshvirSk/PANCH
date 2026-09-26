@@ -12,7 +12,10 @@ function respond(statusCode: number, body: any): APIGatewayProxyResult {
 }
 
 export const getRuling = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  return respond(200, data.ruling);
+  // Stub until the tribunal publishes real rulings: the fixture ruling for case c-104, 404 otherwise.
+  const caseId = event.pathParameters?.id;
+  if (caseId !== data.tribunalOutput.caseId) return respond(404, { error: 'Ruling not found' });
+  return respond(200, data.tribunalOutput.ruling);
 };
 
 export const demoRun = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {

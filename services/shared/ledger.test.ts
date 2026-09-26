@@ -15,17 +15,19 @@ describe('Ledger Transitions', () => {
   });
 
   it('allows RESOLVE from DELIBERATING or ESCALATED', () => {
-    expect(validateTransition(CaseStatus.DELIBERATING, LedgerEvent.RESOLVE)).toBe(CaseStatus.RESOLVED);
-    expect(validateTransition(CaseStatus.ESCALATED, LedgerEvent.RESOLVE)).toBe(CaseStatus.RESOLVED);
+    // Literal check: a missing enum member is undefined and would otherwise compare equal to itself.
+    expect(validateTransition(CaseStatus.DELIBERATING, LedgerEvent.RESOLVE)).toBe('RULED');
+    expect(validateTransition(CaseStatus.DELIBERATING, LedgerEvent.RESOLVE)).toBe(CaseStatus.RULED);
+    expect(validateTransition(CaseStatus.ESCALATED, LedgerEvent.RESOLVE)).toBe(CaseStatus.RULED);
   });
 
   it('rejects double-resolve', () => {
-    expect(() => validateTransition(CaseStatus.RESOLVED, LedgerEvent.RESOLVE)).toThrow('Double-resolve rejected');
+    expect(() => validateTransition(CaseStatus.RULED, LedgerEvent.RESOLVE)).toThrow('Double-resolve rejected');
     expect(() => validateTransition(CaseStatus.SETTLED, LedgerEvent.RESOLVE)).toThrow('Double-resolve rejected');
   });
 
-  it('allows RELEASE only when RESOLVED', () => {
-    expect(validateTransition(CaseStatus.RESOLVED, LedgerEvent.RELEASE)).toBe(CaseStatus.SETTLED);
+  it('allows RELEASE only when RULED', () => {
+    expect(validateTransition(CaseStatus.RULED, LedgerEvent.RELEASE)).toBe(CaseStatus.SETTLED);
     expect(() => validateTransition(CaseStatus.DELIBERATING, LedgerEvent.RELEASE)).toThrow('Illegal transition');
   });
 });

@@ -21,7 +21,9 @@ export class ApiStack extends cdk.Stack {
     this.api = new apigw.RestApi(this, 'PanchApi', {
       restApiName: 'Panch Service API',
       defaultCorsPreflightOptions: {
-        allowOrigins: ['http://localhost:3000', apigw.Cors.ALL_ORIGINS], // Wil update with Amplify domain once known
+        // Any origin is safe here: auth is a bearer ID token in the Authorization header, never a cookie.
+        // (Previously ['http://localhost:3000', ALL_ORIGINS], which nested an array and only allowed localhost.)
+        allowOrigins: apigw.Cors.ALL_ORIGINS,
         allowMethods: apigw.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
       },
@@ -29,6 +31,12 @@ export class ApiStack extends cdk.Stack {
         tracingEnabled: true,
       }
     });
+
+    // Errors raised by API Gateway itself (e.g. 401 from the Cognito authorizer) skip the Lambdas,
+    // so they need CORS headers here or the browser hides the status from the frontend.
+    const corsErrorHeaders = { 'Access-Control-Allow-Origin': "'*'", 'Access-Control-Allow-Headers': "'*'" };
+    this.api.addGatewayResponse('Default4xx', { type: apigw.ResponseType.DEFAULT_4XX, responseHeaders: corsErrorHeaders });
+    this.api.addGatewayResponse('Default5xx', { type: apigw.ResponseType.DEFAULT_5XX, responseHeaders: corsErrorHeaders });
 
     const authorizer = new apigw.CognitoUserPoolsAuthorizer(this, 'PanchCognitoAuth', {
       cognitoUserPools: [props.userPool],

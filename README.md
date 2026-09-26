@@ -72,8 +72,50 @@ The case progression is managed through REST API endpoints. You no longer need t
    - Transitions case to `DELIBERATING` and locks further uploads. (This will soon trigger the AI Step Functions).
 
 ### Public Routes
-- **Health Check:** `GET /health` (Returns `{ ok: true, version: "1.0.0" }`)
+- **Health Check:** `GET /health` (Returns `{ status: "ok", timestamp: "..." }`)
 - **Demo Mode:** `POST /demo/run` (Triggers a quick, unauthenticated demo simulation).
+
+### Frontend status (built)
+
+The `web/` app covers everything above. It is a Next.js static export, hosted by the Amplify app in `WebStack`.
+
+| Page | Login | What it does |
+|---|---|---|
+| `/` | No | Landing page, **Run demo case** (`POST /demo/run`), API health in the footer (`GET /health`) |
+| `/login/` | No | Sign in, create account (email), confirm the emailed code. Uses `USER_PASSWORD_AUTH`, the only flow the Cognito app client enables |
+| `/cases/` | Yes | Cases opened on this device (the API has no list route yet), with statuses refreshed from the API; open a case by ID or pasted link |
+| `/cases/new/` | Yes | Create a case as claimant (`POST /cases`) |
+| `/case/?id=` | Yes | Fund as respondent, dispute, upload evidence (drag and drop, presigned S3 PUT), submit, live polling while deliberating, ledger receipts. Fund, dispute and submit ask for confirmation |
+| `/ruling/?id=` | No | Public ruling as a formal award: split, confidence, reasoning, cited findings, clauses (`GET /rulings/{id}`) |
+
+Every protected call sends the Cognito ID token in `Authorization`. Roles come from the case: the claimant is the creator's Cognito `sub`, and the respondent is the account whose email matches `respondentEmail`.
+
+**Reliability and security:**
+- API calls time out after 20 s and uploads after 120 s.
+- Reads are retried once on a network error or a 502/503/504. Writes are never retried.
+- Server errors are shown without internal details.
+- Double submits are blocked.
+- The site sends a CSP and other security headers from `web/security-headers.json`, applied by `WebStack`.
+
+**Tests:**
+- `npm run test --workspace=web` runs 274 unit and component tests (Vitest, Testing Library, jsdom). They cover every case status for each role, the dialogs, polling, uploads, login and hostile input.
+- A 95-check browser suite passes in Chrome and Edge. It covers accessibility (axe, WCAG 2.1 AA, light and dark), offline and failing APIs, conflicting edits, XSS, keyboard use, mobile layout, performance budgets and zero CSP violations. It lives outside the repo; see `docs/dev-process/LOG.md`.
+
+**Run locally:**
+```bash
+cp web/.env.example web/.env.local   # fill in the API URL and Cognito IDs
+npm run dev --workspace=web          # http://localhost:3000
+npm run build --workspace=web        # static site in web/out
+```
+
+**Before the deployed site works end to end, run one `cdk deploy --all` from branch `p/feat/web-frontend` (Arshvir):**
+- API CORS allows the Amplify origin (today only `http://localhost:3000` passes preflight), and API Gateway 401s carry CORS headers.
+- The evidence bucket gets a PUT CORS rule. Without it, browsers cannot upload to the presigned URL.
+- The Amplify app gets `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USER_POOL_ID` and `NEXT_PUBLIC_USER_POOL_CLIENT_ID` from the stacks. Builds use `/amplify.yml`.
+- `GET /rulings/c-104` returns the fixture ruling instead of an empty body.
+- The Amplify app serves the security headers (CSP, HSTS, frame and MIME-sniffing protection).
+
+After the deploy, merging to `main` triggers the Amplify build. The site URL is the `PanchWebStack.WebUrl` output.
 
 ---
 

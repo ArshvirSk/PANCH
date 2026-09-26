@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspace=web",
     "test": "npm run test --workspaces --if-present",
     "synth": "npm run synth --workspace=infra"
   },
