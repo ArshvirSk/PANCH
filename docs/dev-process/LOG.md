@@ -126,3 +126,25 @@
 **Honest caveats:**
 - Demo cases created before the `isDemo` deploy (e.g. `demo-ddd2cc80`) have no flag and now correctly 401 logged out; only fresh demo cases are public.
 - The deployed tribunal still runs stub judges (PR #4 not merged yet), so published ruling bodies are the median stub output until that lands.
+## Phase 9: PR #4 merge + live real-judge validation + first-deploy production fixes (Buffy/agent, 2026-09-27)
+**Merge & deploy (user-approved sequence):**
+- Merged PR #4 (`r/feat/judges` -> `main`, merge commit `cef6cdb`); branch deleted on origin and locally.
+- `cdk deploy --all` green on all 6 stacks; `PanchWorkflowStack` carried the real judge handlers into the deployed state machine for the first time.
+
+**First live run surfaced four production gaps, all fixed and redeployed:**
+- Judge prompts were `readFileSync`'d from `../prompts/judge-N.md` at module load, but the bundled Lambda is a flat `index.js` -> `ENOENT /var/prompts/judge-2.md`, hard-failing all three judges on every case. Fix: esbuild text loader (`bundling: { loader: { '.md': 'text' } }` in `WorkflowStack.ts`) + `import ... from '../prompts/judge-N.md?raw'` inlines prompts into the bundle; vitest still reads the source tree.
+- `blind.ts` computed the blinded case file but never wrote it to S3; `judgesShared.loadBlindedCaseFile` silently fell back to an empty placeholder (judges would deliberate over nothing). Fix: blind.ts `PutObject`s the blinded file; judges load it from S3 (`GetObjectCommand`, `s3://` or `BUCKET`-relative); the silent fallback is gone — a missing file now fails loudly.
+- Every tribunal Lambda lacked `kms:GenerateDataKey`/`Decrypt` (SSE-KMS buckets) and `ssm:GetParameter` for `/panch/models/*`; judge-3's `us.meta.llama3-3` inference profile also needs destination-region model grants. Fix: `grantEncryptDecrypt` per Lambda, scoped SSM statement, `us-east-2`/`us-west-2` foundation-model resources.
+- `swapTest.ts` was a hardcoded fixture (`payeeShareBps: 0`, identical for all judges) -> the aggregate mirror-check read inconsistent on any real panel and escalated 100% of cases; PRESIDING/PUBLISH never ran. Fix: swap test is now a real mirrored Bedrock judgment (counterfactual role-reversal preamble; Mistral/Llama inverted to 0 as expected, Nova muddled but median absorbs it).
+
+**Demo substance:** `demo.ts` seeds the demo contract text to `panch-evidence/{caseId}/extracted/e-1.txt`; `blind.ts` inlines each evidence item's `extractedTextKey` content into the blinded case file. Real judges now rule on terms (clauses 3.1/3.2/4.1/4.2), not an empty record. `intake.ts`'s fabricated e-1 pointer finally has a referent.
+
+**Live logged-out proof (fresh deploy, real Bedrock, no stubs anywhere):**
+- `POST /demo/run` -> `demo-9e86d8c0`; ~18s to `SETTLED` (`currentStage: PUBLISH`, 12 real model calls: 3 judges + 3 cross-exam + 3 swap + presiding path).
+- Panel: unanimous 10000/10000/10000 (spread 0, swapConsistent true) — distinct per-model reasoning, all citing the contract correctly.
+- `GET /cases/demo-9e86d8c0` no auth -> 200 trimmed; `GET /rulings/demo-9e86d8c0` no auth -> 200 real ruling; CloudFront `panch-rulings/demo-9e86d8c0/ruling.json` -> 200 with the published body (median judge = Mistral: 8 findings, computed due-date, breach conclusion).
+- 401 regression: `c-8cf694fc`, `c-9d74f151` no auth -> 401; junk bearer -> 401; demo case -> 200. Unbroken.
+
+**Checks:** `tsc --noEmit` clean, 302/302 tests pass (tribunal 10, shared 4, api 10, web 278).
+
+**Honest caveats:** earlier failed demos (`demo-8a993b5e`, `demo-af534c39`, `demo-ceaad0bd`, `demo-268a6849`) marked FAILED in the table are the pre-fix runs; `demo-e961fd80` is ESCALATED (fixture swap test + empty evidence, both since fixed). The swap preamble is a counterfactual instruction, not a mechanical relabel — on a blinded record, relabelling identical labels is a no-op and naive string swaps leave the narrative bound to the original labels.

@@ -60,7 +60,11 @@ export class WorkflowStack extends cdk.Stack {
         `arn:aws:bedrock:${this.region}::foundation-model/amazon.nova-pro-v1:0`,
         `arn:aws:bedrock:${this.region}::foundation-model/mistral.mistral-large-3-675b-instruct`,
         `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.meta.llama3-3-70b-instruct-v1:0`,
-        `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-3-70b-instruct-v1:0`
+        `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-3-70b-instruct-v1:0`,
+        // The us.meta.* cross-region inference profile can route to any of its US
+        // destination regions; IAM checks the destination-region foundation model.
+        'arn:aws:bedrock:us-east-2::foundation-model/meta.llama3-3-70b-instruct-v1:0',
+        'arn:aws:bedrock:us-west-2::foundation-model/meta.llama3-3-70b-instruct-v1:0'
       ]
     });
 
@@ -74,13 +78,23 @@ export class WorkflowStack extends cdk.Stack {
           CASES_TABLE: props.dataStack.casesTable.tableName,
           LEDGER_TABLE: props.dataStack.ledgerTable.tableName,
           BUCKET: props.dataStack.evidenceBucket.bucketName,
-        }
+        },
+        // Inline .md prompt imports (judge handlers import '../prompts/judge-N.md?raw').
+        // Without this the prompt file would be missing from the flat Lambda bundle.
+        bundling: { loader: { '.md': 'text' } },
       });
       fn.addToRolePolicy(bedrockPolicy);
+      fn.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/panch/models/*`]
+      }));
       fn.addToRolePolicy(new iam.PolicyStatement({
         actions: ['s3:GetObject', 's3:PutObject', 'textract:*', 'dynamodb:*'],
         resources: ['*'] 
       }));
+      // Evidence/rulings buckets are SSE-KMS: S3 Get/Put/Copy on those objects needs
+      // kms:Decrypt and kms:GenerateDataKey (blind writes, judges read, publish/fail copy).
+      props.dataStack.kmsKey.grantEncryptDecrypt(fn);
       return fn;
     };
 

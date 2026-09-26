@@ -2,13 +2,37 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 import { CaseStatus } from '../shared';
 
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const sfnClient = new SFNClient({});
+const s3Client = new S3Client({});
 const CASES_TABLE = process.env.CASES_TABLE || '';
 const STATE_MACHINE_ARN = process.env.STATE_MACHINE_ARN || '';
+const EVIDENCE_BUCKET = process.env.BUCKET || '';
+
+// Fixed demo contract: its extracted text is seeded into the evidence bucket so
+// the real tribunal judges have substantive terms to evaluate (delivery
+// confirmed, payment clause 3.1, escalation clause 4.2 -> full payment due).
+const DEMO_CONTRACT_TEXT = [
+  'CONTRACT FOR FREELANCE SERVICES',
+  '',
+  'Parties: The Claimant (freelance designer) and the Respondent (client).',
+  '',
+  '1. Scope of work: The Claimant agrees to design and deliver a complete landing page for the Respondent.',
+  '2. Delivery: The Claimant delivered the completed landing page on 3 March 2026. The Respondent confirmed receipt by email on the same day.',
+  '3. Payment terms:',
+  '   Clause 3.1: The Respondent shall pay the Claimant 500 USD within 7 days of confirmed delivery.',
+  '   Clause 3.2: Payment shall be made in full to the Claimant unless the deliverable fails to conform to the agreed scope.',
+  '4. Breach and remedy:',
+  '   Clause 4.1: The Respondent may withhold payment only if the deliverable does not conform to the agreed scope and the Claimant fails to fix it within 14 days of written notice.',
+  '   Clause 4.2: If the Respondent fails to pay within 7 days of confirmed delivery without a valid withholding reason, the full contracted amount becomes immediately due to the Claimant.',
+  '5. Dispute resolution: Any dispute is resolved by a neutral tribunal applying this contract as written.',
+  '',
+  'Facts on the record: The Respondent confirmed receipt of the deliverable on 3 March 2026. The Respondent never gave written notice of non-conformity. As of the case filing date, 45 days have passed and no payment has been made.',
+].join('\n');
 
 function respond(statusCode: number, body: any): APIGatewayProxyResult {
   return { statusCode, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body) };
@@ -49,6 +73,18 @@ export const runDemo = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     };
     
     await docClient.send(new PutCommand({ TableName: CASES_TABLE, Item: item }));
+
+    // Seed the demo contract text where intake expects the extracted evidence to
+    // live (panch-evidence/{caseId}/extracted/e-1.txt) so the judges can rule on
+    // the substance of the dispute rather than an empty record.
+    if (EVIDENCE_BUCKET) {
+      await s3Client.send(new PutObjectCommand({
+        Bucket: EVIDENCE_BUCKET,
+        Key: `panch-evidence/${caseId}/extracted/e-1.txt`,
+        Body: DEMO_CONTRACT_TEXT,
+        ContentType: 'text/plain',
+      }));
+    }
 
     // Start Execution
     const startRes = await sfnClient.send(new StartExecutionCommand({

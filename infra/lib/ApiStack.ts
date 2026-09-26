@@ -206,9 +206,12 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'runDemo',
       entry: path.join(__dirname, '../../services/api/demo.ts'),
-      environment: { CASES_TABLE: props.dataStack.casesTable.tableName, STATE_MACHINE_ARN: props.workflowStack.stateMachine.stateMachineArn }
+      environment: { CASES_TABLE: props.dataStack.casesTable.tableName, STATE_MACHINE_ARN: props.workflowStack.stateMachine.stateMachineArn, BUCKET: props.dataStack.evidenceBucket.bucketName }
     });
     props.dataStack.casesTable.grantReadWriteData(demoLambda);
+    // The demo seeds its contract text into the evidence bucket (KMS-encrypted).
+    props.dataStack.evidenceBucket.grantWrite(demoLambda);
+    props.dataStack.kmsKey.grantEncryptDecrypt(demoLambda);
     demoLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: ['states:StartExecution'],
       resources: [props.workflowStack.stateMachine.stateMachineArn]
