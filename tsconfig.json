@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "exclude": ["node_modules", "dist", "cdk.out"]
+  "exclude": ["node_modules", "dist", "cdk.out", "web"]
 }
