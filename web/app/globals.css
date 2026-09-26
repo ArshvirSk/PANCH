@@ -215,7 +215,8 @@ input:disabled, select:disabled { opacity: 0.65; }
 .case-meta { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
 .amount { font-size: 1.4rem; }
 
-.progress { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.5rem; }
+/* No margin-top reset: the progress bar takes its top spacing from the surrounding .stack-lg. */
+.progress { list-style: none; margin-left: 0; margin-right: 0; margin-bottom: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.5rem; }
 .progress-step { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.35rem; font-size: 0.8rem; color: var(--muted); position: relative; }
 .progress-dot { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface); font-weight: 700; font-size: 0.8rem; }
 .progress-done .progress-dot { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
