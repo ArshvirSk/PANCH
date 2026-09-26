@@ -101,21 +101,70 @@ export class WorkflowStack extends cdk.Stack {
     const intakeTask = new tasks.LambdaInvoke(this, 'INTAKE', { lambdaFunction: intakeLambda, payloadResponseOnly: true });
     const blindTask = new tasks.LambdaInvoke(this, 'BLIND', { lambdaFunction: blindLambda, payloadResponseOnly: true });
     
-    const judgesParallel = new sfn.Parallel(this, 'JUDGES');
+    const judgesParallel = new sfn.Parallel(this, 'JUDGES', { resultPath: '$.judges' });
     judgesParallel.branch(new tasks.LambdaInvoke(this, 'Judge1', { lambdaFunction: judge1Lambda, payloadResponseOnly: true }));
     judgesParallel.branch(new tasks.LambdaInvoke(this, 'Judge2', { lambdaFunction: judge2Lambda, payloadResponseOnly: true }));
     judgesParallel.branch(new tasks.LambdaInvoke(this, 'Judge3', { lambdaFunction: judge3Lambda, payloadResponseOnly: true }));
 
-    const crossExamTask = new tasks.LambdaInvoke(this, 'CROSS_EXAM', { lambdaFunction: crossExamLambda, payloadResponseOnly: true });
-    const swapTestTask = new tasks.LambdaInvoke(this, 'SWAP_TEST', { lambdaFunction: swapTestLambda, payloadResponseOnly: true });
+    const prepareCrossExam = new sfn.Pass(this, 'PrepareCrossExam', {
+      parameters: {
+        'caseId.$': '$.caseId',
+        'blindedCaseFileS3Key.$': '$.blindedCaseFileS3Key',
+        'peerRulings': {
+          'judge-1.$': '$.judges[0].output',
+          'judge-2.$': '$.judges[1].output',
+          'judge-3.$': '$.judges[2].output'
+        }
+      }
+    });
+
+    const crossExamParallel = new sfn.Parallel(this, 'CROSS_EXAM', { resultPath: '$.crossExamOutputs' });
+    crossExamParallel.branch(
+      new sfn.Pass(this, 'InjectJudge1CE', {
+        parameters: { 'judgeName': 'judge-1', 'caseId.$': '$.caseId', 'blindedCaseFileS3Key.$': '$.blindedCaseFileS3Key', 'peerRulings.$': '$.peerRulings' }
+      }).next(new tasks.LambdaInvoke(this, 'CrossExamJudge1', { lambdaFunction: crossExamLambda, payloadResponseOnly: true }))
+    );
+    crossExamParallel.branch(
+      new sfn.Pass(this, 'InjectJudge2CE', {
+        parameters: { 'judgeName': 'judge-2', 'caseId.$': '$.caseId', 'blindedCaseFileS3Key.$': '$.blindedCaseFileS3Key', 'peerRulings.$': '$.peerRulings' }
+      }).next(new tasks.LambdaInvoke(this, 'CrossExamJudge2', { lambdaFunction: crossExamLambda, payloadResponseOnly: true }))
+    );
+    crossExamParallel.branch(
+      new sfn.Pass(this, 'InjectJudge3CE', {
+        parameters: { 'judgeName': 'judge-3', 'caseId.$': '$.caseId', 'blindedCaseFileS3Key.$': '$.blindedCaseFileS3Key', 'peerRulings.$': '$.peerRulings' }
+      }).next(new tasks.LambdaInvoke(this, 'CrossExamJudge3', { lambdaFunction: crossExamLambda, payloadResponseOnly: true }))
+    );
+
+    const swapTestParallel = new sfn.Parallel(this, 'SWAP_TEST', { resultPath: '$.swapOutputsList' });
+    swapTestParallel.branch(
+      new sfn.Pass(this, 'InjectJudge1ST', {
+        parameters: { 'judgeName': 'judge-1', 'caseId.$': '$.caseId', 'blindedCaseFileS3Key.$': '$.blindedCaseFileS3Key', 'isSwapTest': true }
+      }).next(new tasks.LambdaInvoke(this, 'SwapTestJudge1', { lambdaFunction: swapTestLambda, payloadResponseOnly: true }))
+    );
+    swapTestParallel.branch(
+      new sfn.Pass(this, 'InjectJudge2ST', {
+        parameters: { 'judgeName': 'judge-2', 'caseId.$': '$.caseId', 'blindedCaseFileS3Key.$': '$.blindedCaseFileS3Key', 'isSwapTest': true }
+      }).next(new tasks.LambdaInvoke(this, 'SwapTestJudge2', { lambdaFunction: swapTestLambda, payloadResponseOnly: true }))
+    );
+    swapTestParallel.branch(
+      new sfn.Pass(this, 'InjectJudge3ST', {
+        parameters: { 'judgeName': 'judge-3', 'caseId.$': '$.caseId', 'blindedCaseFileS3Key.$': '$.blindedCaseFileS3Key', 'isSwapTest': true }
+      }).next(new tasks.LambdaInvoke(this, 'SwapTestJudge3', { lambdaFunction: swapTestLambda, payloadResponseOnly: true }))
+    );
     
     const prepareAggregate = new sfn.Pass(this, 'PrepareAggregate', {
       parameters: {
-        'caseId.$': '$.[0].caseId',
+        'caseId.$': '$.caseId',
+        'blindedCaseFileS3Key.$': '$.blindedCaseFileS3Key',
         'finalPanelOutputs': {
-          'judge-1.$': '$.[0].output',
-          'judge-2.$': '$.[1].output',
-          'judge-3.$': '$.[2].output'
+          'judge-1.$': '$.crossExamOutputs[0].output.revisedRuling',
+          'judge-2.$': '$.crossExamOutputs[1].output.revisedRuling',
+          'judge-3.$': '$.crossExamOutputs[2].output.revisedRuling'
+        },
+        'swapOutputs': {
+          'judge-1.$': '$.swapOutputsList[0].output',
+          'judge-2.$': '$.swapOutputsList[1].output',
+          'judge-3.$': '$.swapOutputsList[2].output'
         }
       }
     });
@@ -136,16 +185,17 @@ export class WorkflowStack extends cdk.Stack {
       .otherwise(presidingTask.next(publishTask).next(settleTask));
 
     const retryProps = { errors: ['States.ALL'], interval: cdk.Duration.seconds(2), maxAttempts: 3, backoffRate: 2.0 };
-    [intakeTask, blindTask, crossExamTask, swapTestTask, aggregateTask, presidingTask, publishTask, settleTask].forEach(t => t.addRetry(retryProps));
+    [intakeTask, blindTask, judgesParallel, crossExamParallel, swapTestParallel, aggregateTask, presidingTask, publishTask, settleTask].forEach(t => t.addRetry(retryProps));
     
-    [intakeTask, blindTask, crossExamTask, swapTestTask, aggregateTask, presidingTask, publishTask, settleTask].forEach(t => t.addCatch(failTask));
+    [intakeTask, blindTask, judgesParallel, crossExamParallel, swapTestParallel, aggregateTask, presidingTask, publishTask, settleTask].forEach(t => t.addCatch(failTask, { resultPath: '$.error' }));
 
     const definition = intakeTask
       .next(blindTask)
       .next(judgesParallel)
+      .next(prepareCrossExam)
+      .next(crossExamParallel)
+      .next(swapTestParallel)
       .next(prepareAggregate)
-      .next(crossExamTask)
-      .next(swapTestTask)
       .next(aggregateTask)
       .next(routeChoice);
 

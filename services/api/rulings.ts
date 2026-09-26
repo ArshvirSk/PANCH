@@ -22,9 +22,9 @@ export const getRulings = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 };
 
 export const getRulingById = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Normally fetch from S3 CloudFront URL
   const caseId = event.pathParameters?.id!;
-  return respond(200, { caseId, rulingUrl: `https://d12345.cloudfront.net/panch-rulings/${caseId}/ruling.json` });
+  const domain = process.env.RULINGS_DOMAIN || 'd12345.cloudfront.net';
+  return respond(200, { caseId, rulingUrl: `https://${domain}/panch-rulings/${caseId}/ruling.json` });
 };
 
 export const verifyRuling = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
