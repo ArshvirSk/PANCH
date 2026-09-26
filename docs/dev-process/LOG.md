@@ -83,3 +83,23 @@
 
 ### Day 2 Verification Notes
 - **Check 5 (Escalation/Review)**: Validated via a manual DynamoDB status override plus direct Lambda invoke rather than an organic escalation and a real authenticated API call. This ensures honest documentation.
+
+## Phase 8: Demo ship gate — public demo polling, real publishing, live auth proof (Arshvir, 2026-09-27)
+**Built (branch `a/fix/demo-public-polling`, merged as PR #7 after PR #6 unblocked CI):**
+- `CaseItem.isDemo` (set only by `POST /demo/run`): `GET /cases/{id}` stays a public method so the ship gate (PRD F10) works logged out, but the Lambda enforces the scope — demo cases return a trimmed projection (no party identifiers); every other case requires a valid Cognito ID token (`aws-jwt-verify`), restoring the previous Cognito behavior for real disputing parties.
+- `publish.ts` now actually writes `panch-rulings/{caseId}/ruling.json` (median judge output, parseRuling-compatible) to the SSE-KMS rulings bucket (s3+kms grants added); `GET /rulings/{id}` proxies the real ruling JSON via CloudFront per the frozen TRD contract (was a placeholder URL).
+- Fixed the AGGREGATE `payloadResponseOnly` data flow so PUBLISH/SETTLE receive `finalPanelOutputs`/`payeeShareBps`; corrected the GetCase SFN policy to execution ARNs (`Arn.format` + `Fn.split` — a lazy-token string replace had silently produced a useless resource) so `currentStage` works.
+
+**What the agent did:**
+- PR #6: removed the duplicated `benchmarkBucket` declaration from `DataStack.ts` (introduced in b591355) plus the `stateEnteredEventDetails` guard and web `FAILED` status-map entries — CI was red on main since Day 2 and this made it green again.
+- Added an auth-matrix unit suite for `GET /cases/{id}` (demo anon 200 trimmed; real case anon/junk 401; real case valid token 200 full; legacy items without the flag 401).
+
+**Checks run:**
+- CI green on PRs #6 and #7 (lint, typecheck, 302 tests, cdk synth); deployed `PanchApiStack`/`PanchWorkflowStack` from the branch, then redeployed from `main` after the merge (a326b24).
+- Live, logged out: `POST /demo/run` → `GET /cases/demo-0d149a04` polls to SETTLED (stage PUBLISH, party fields absent) → `GET /rulings/demo-0d149a04` 200 with a parseRuling-valid body → CloudFront `panch-rulings/demo-0d149a04/ruling.json` 200.
+- Live negatives: real cases `c-8cf694fc`, `c-9d74f151`, `c-escalated-1` without auth → 401; junk bearer → 401.
+- Live authenticated check: signed in as the existing test user owning `c-8cf694fc` (`initiate-auth` USER_PASSWORD_AUTH after `admin-set-user-password`, same flow as the earlier sign-up/confirm testing) and called `GET /cases/c-8cf694fc` with the ID token as Bearer — HTTP 200 with the **full** body (`claimantId`/`respondentId` present), while the same request without a token returns 401.
+
+**Honest caveats:**
+- Demo cases created before the `isDemo` deploy (e.g. `demo-ddd2cc80`) have no flag and now correctly 401 logged out; only fresh demo cases are public.
+- The deployed tribunal still runs stub judges (PR #4 not merged yet), so published ruling bodies are the median stub output until that lands.
