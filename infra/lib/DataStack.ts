@@ -87,6 +87,15 @@ export class DataStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
+      // Browsers upload evidence straight to S3 with a presigned PUT URL. CORS only lets the page
+      // make that request; the 5-minute presigned signature is still what authorizes it.
+      cors: [{
+        allowedMethods: [s3.HttpMethods.PUT],
+        allowedOrigins: ['*'],
+        allowedHeaders: ['*'],
+        exposedHeaders: ['ETag'],
+        maxAge: 3000,
+      }],
     });
 
     this.rulingsBucket = new s3.Bucket(this, 'RulingsBucket', {

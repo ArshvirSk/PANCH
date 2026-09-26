@@ -1,0 +1,23 @@
+# Amplify Hosting build for the Next.js static export in /web.
+# The app root comes from AMPLIFY_MONOREPO_APP_ROOT=web (set in infra/lib/WebStack.ts),
+# and NEXT_PUBLIC_* values are Amplify environment variables set there too.
+version: 1
+applications:
+  - appRoot: web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - nvm install 20 && nvm use 20
+            # npm workspaces: install from the repo root lockfile (web + root deps only).
+            - (cd .. && npm ci --workspace=web --include-workspace-root --no-audit --no-fund)
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: out
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - .next/cache/**/*
