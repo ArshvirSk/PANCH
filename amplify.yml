@@ -9,8 +9,9 @@ applications:
         preBuild:
           commands:
             - nvm install 20 && nvm use 20
-            # npm workspaces: install from the repo root lockfile (web + root deps only).
-            - (cd .. && npm ci --workspace=web --include-workspace-root --no-audit --no-fund)
+            # npm workspaces: install everything from the repo root lockfile. The web app imports
+            # types from services/shared, which need that workspace's deps (e.g. zod) to resolve.
+            - (cd .. && npm ci --no-audit --no-fund)
         build:
           commands:
             - npm run build
