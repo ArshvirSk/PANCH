@@ -24,8 +24,6 @@ export class DataStack extends cdk.Stack {
   public readonly rulingsBucket: s3.Bucket;
   public readonly benchmarkBucket: s3.Bucket;
 
-  public readonly benchmarkBucket: s3.Bucket;
-
   public readonly kmsKey: kms.Key;
   public readonly rulingsDistribution: cloudfront.Distribution;
 
