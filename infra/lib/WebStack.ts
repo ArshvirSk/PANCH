@@ -3,6 +3,8 @@ import { Construct } from 'constructs';
 import * as amplify from '@aws-cdk/aws-amplify-alpha';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+// Owned by web/: the same file is enforced by the frontend's browser tests.
+import securityHeaders from '../../web/security-headers.json';
 
 export interface WebStackProps extends cdk.StackProps {
   apiUrl: string;
@@ -32,6 +34,8 @@ export class WebStack extends cdk.Stack {
         NEXT_PUBLIC_USER_POOL_CLIENT_ID: props.userPoolClient.userPoolClientId,
         NEXT_TELEMETRY_DISABLED: '1',
       },
+      // CSP, HSTS, clickjacking and MIME-sniffing protection on every page.
+      customResponseHeaders: [{ appRoot: 'web', pattern: '**/*', headers: securityHeaders }],
     });
 
     // The site is a static export: serve the exported 404 page for unknown paths.
