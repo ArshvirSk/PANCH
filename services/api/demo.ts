@@ -5,6 +5,7 @@ import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 import { CaseStatus } from '../shared';
+import { emitMetric } from '../shared/metrics';
 
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const sfnClient = new SFNClient({});
@@ -40,6 +41,8 @@ function respond(statusCode: number, body: any): APIGatewayProxyResult {
 
 export const runDemo = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    // ObsStack dashboard: count every demo run attempt (EMF -> CloudWatch).
+    emitMetric('DemoRuns', 1, 'Count', {});
     const caseId = `demo-${uuidv4().substring(0, 8)}`;
     const claimantId = 'demo-claimant';
     
@@ -83,6 +86,30 @@ export const runDemo = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         Key: `panch-evidence/${caseId}/extracted/e-1.txt`,
         Body: DEMO_CONTRACT_TEXT,
         ContentType: 'text/plain',
+      }));
+
+      // Seed the cached fallback ruling. On failure the Catch -> FAILED lambda
+      // copies bench/demo/{caseId}/fallback-ruling.json to
+      // panch-rulings/{caseId}/ruling.json, so a failed demo still serves a
+      // valid ruling page instead of a 404. Escrow is untouched: no RESOLVE or
+      // RELEASE entry is ever written on this path.
+      await s3Client.send(new PutObjectCommand({
+        Bucket: EVIDENCE_BUCKET,
+        Key: `bench/demo/${caseId}/fallback-ruling.json`,
+        Body: JSON.stringify({
+          caseId,
+          payeeShareBps: 0,
+          spreadBps: 0,
+          swapConsistent: false,
+          findingsOfFact: [],
+          clausesRelied: [],
+          reasoning: 'The tribunal could not complete deliberation for this demo case. Escrow is unaffected: no RESOLVE or RELEASE was recorded. Retry the demo or file the dispute normally.',
+          confidence: 0,
+          uncertainties: ['Tribunal failure — no ruling was reached'],
+          fallback: true,
+          publishedAt: new Date().toISOString(),
+        }, null, 2),
+        ContentType: 'application/json',
       }));
     }
 

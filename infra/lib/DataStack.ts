@@ -111,6 +111,9 @@ export class DataStack extends cdk.Stack {
     });
 
     this.benchmarkBucket = new s3.Bucket(this, 'BenchmarkBucket', {
+      // Same KMS key as evidence/rulings: SSE-KMS on every project bucket.
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: this.kmsKey,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
