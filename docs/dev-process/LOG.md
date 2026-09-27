@@ -148,22 +148,6 @@
 **Checks:** `tsc --noEmit` clean, 302/302 tests pass (tribunal 10, shared 4, api 10, web 278).
 
 **Honest caveats:** earlier failed demos (`demo-8a993b5e`, `demo-af534c39`, `demo-ceaad0bd`, `demo-268a6849`) marked FAILED in the table are the pre-fix runs; `demo-e961fd80` is ESCALATED (fixture swap test + empty evidence, both since fixed). The swap preamble is a counterfactual instruction, not a mechanical relabel — on a blinded record, relabelling identical labels is a no-op and naive string swaps leave the narrative bound to the original labels.
-\r\n## Phase 10: audit findings — known limitations (documented for README/pitch, deliberate scope cuts, not bugs to fix)\r\n**Swap-test consistency is median-blind.** `swapConsistent` compares the panel's median award against `10000 - mirroredMedian`, so an individual judge whose mirrored ruling inverts poorly is absorbed by the median instead of flagged. Observed on a deliberately balanced fixture (`c-ambig-5b05407f`: late delivery + undefined "acceptance" + 6-week campaign launch on the deliverable): the original panel split 5000/10000/10000 (spread 5000 -> correctly escalated to human review), and all three mirrored rulings returned 0 — the mirror inverted cleanly — yet judge-1's original 5000 vs its own mirrored 0 is a 5000-bps mirror deviation that the median check scored as fully consistent. Per-judge mirror deviation exists in the execution history but is never aggregated.\r\n\r\n**Positional bias under the counterfactual swap.** On the same balanced fixture, judge-1 (Nova) accepted conduct-based acceptance in the original run ("launching the campaign with the deliverable… can be interpreted as acceptance in substance", 5000) then denied the identical reasoning in its mirrored run ("this does not constitute formal acceptance", 0) — the model contradicted its own reading of the same facts when told the party roles were reversed. The counterfactual swap framing measurably biases models toward the conservative literal interpretation. The mirroring logic does produce genuine self-disagreement on ambiguous cases; that signal is currently unused (see the median-blindness limitation above).\r\n\r\nBoth findings are real, reproducible, and intentionally left unfixed for the hackathon window; they belong in the pitch as honesty about the bias-eval surface (P1's bias-eval dashboard is the designed home for them).\r\nEOF
-git add .gitignore docs/dev-process/LOG.md && git commit -m "$(cat <<'EOF'
-docs: record swap-test median-blindness and positional bias as known limitations; ignore tmp-validation fixtures
-
-Phase 10 audit of the tribunal on a deliberately balanced 50/50 case found
-two real but out-of-scope issues, documented verbatim for the README/pitch:
-the swap-consistency check is median-blind (a judge contradicting itself
-across the mirror is absorbed by the median), and the counterfactual swap
-framing biases models toward the literal reading (Nova accepted conduct-
-acceptance in the original, denied it in the mirror of the same facts).
-
-Also adds scripts/tmp-validation/ to .gitignore (the audit fixtures were
-untracked, not actually ignored) and deletes the fixtures.
-
-🤖 Generated with Codebuff
-Co-Authored-By: Codebuff <noreply@codebuff.com>
 
 ## Phase 10: audit findings - known limitations (documented for README/pitch, deliberate scope cuts, not bugs to fix)
 
@@ -173,7 +157,62 @@ Co-Authored-By: Codebuff <noreply@codebuff.com>
 
 Both findings are real, reproducible, and intentionally left unfixed for the hackathon window; they belong in the pitch as honesty about the bias-eval surface (P1 bias-eval dashboard is the designed home for them).
 
-## Phase 11: Human review queue UI (Piyush, branch `p/feat/reviews-ui`, 2026-09-27)
+## Phase 11: Day 3 hardening — cost tracking, observability, security pass, edge-case proof (Arshvir + agent, branch `a/feat/day3-harden`, 2026-09-27)
+
+**Cost tracking (P0 deliverable)**
+- `services/shared/cost.ts` (per-model CaseUsage, SSM-priced `computeCaseCostUsd`) + `services/shared/metrics.ts` (zero-dep EMF `emitMetric`/`timed`).
+- `models.ts` records real Converse `res.usage` + guardrailConfig on every judge call; handlers thread `modelId`/`usage`; the state machine carries them into AGGREGATE, which prices the case from `/panch/pricing/bedrock/*` and emits Panch.BedrockTokens per stage/model.
+- **Three real bugs this uncovered and fixed:** (1) PrepareAggregate referenced `$.crossExamOutputs[N].modelId`, which the pass-through crossExam never produces — usage now threads from `$.judges[N]`, captured in PrepareCrossExam because that Pass replaces the state input (its own hard-won lesson: a Pass without `resultPath` discards everything not re-emitted). (2) Llama json mode returned `confidence: 90` (0–100 scale) and failed z.max(1) after 3 retries — models.ts now normalizes 1<x≤100 to x/100 before schema.parse (documented as model-output normalization, not free-text parsing). (3) PRESIDING (payloadResponseOnly, deliberately untouched — Rutu's lane) dropped `usage`/`costUsd`; fixed with a PRESIDING `resultPath` + MergePresiding pass in the state machine.
+- **SETTLE silently swallowed its errors** (`catch → return settled:true`): combined with my IAM tightening removing Settle's implicit `dynamodb:UpdateItem`, a denied RESOLVE transaction looked like a green run (execution SUCCEEDED, case stuck DELIBERATING, no ledger rows). Fixed both: explicit `UpdateItem` grant (a transaction's Update checks the per-item permission) and settle.ts rethrows. publish.ts is now idempotent (ConditionalCheckFailed on the Rulings put → already-published success) so FAILED→resubmit runs cannot dead-end on a stale record.
+- **Real case cost (live):** `demo-1f52f83f` — 9,390 tokens (6,659 in / 2,731 out) across Nova Pro (3,182), Mistral Large (3,496), Llama 3.3 70B (2,712) = **$0.02460304** per case, ~2.4¢ per 12 real Bedrock calls. Verified against SSM prices by hand; served on `GET /rulings/{id}` (`costUsd`, `usageSource: "bedrock-converse"`) and in the gallery.
+
+**Observability (ObsStack)**
+- Dashboard `Panch-Demo` (executions started/succeeded/failed, stage durations, AWS/Bedrock + Panch.BedrockTokens, throttles, DemoRuns, API 5xx, ReviewActions, CloudFront requests), SNS topic `panch-alarms`, 3 alarms (failed executions ≥1, API 5xx ≥5, Bedrock throttles ≥1). X-Ray ACTIVE on every Lambda + state machine `tracingEnabled` (verified XRAY TraceId in judge REPORT lines).
+
+**Security pass → `docs/SECURITY.md`**
+- Removed the state machine role's wildcard `dynamodb:*/s3:*/textract:* on *`; every Lambda now has scoped grants (remaining `xray:*` is AWS-managed and unscopeable — documented). Benchmark bucket moved to SSE-KMS. Secrets scan of tree + last 60 commits: clean (only empty `web/.env.example` tracked). Guardrail saga from the earlier session recorded: PROMPT_ATTACK false-positives on the judges' own instructions (removed; structural injection defense instead) and immutable guardrail versions now carry a config-hash logical id.
+
+**Edge cases (all live, logged out unless noted)**
+- Duplicate submit: sequential → 200 then 400 (`current status: DELIBERATING`); 4 concurrent on a DISPUTED case → exactly one 200, three 400 (conditional-write guard).
+- Reviews: `payeeShareBps` 1.5 / 10001 / true → 400; double review → first 200 SETTLED, second 400 (precheck) with 409 race branch unit-tested.
+- Forced failure (SSM `/panch/models/judge-1` → bogus id): Catch → FAILED fires within seconds; **two gaps found and fixed**: (a) the fallback ruling copy targeted the evidence bucket, while CloudFront serves the rulings bucket — failHandler now copies into RULINGS_BUCKET (grant + env added); (b) nothing ever seeded `bench/demo/{caseId}/fallback-ruling.json` — demo.ts now seeds it per run. Re-tested: CloudFront serves the fallback ruling (HTTP 200, `fallback:true`), ledger count 0 (escrow untouched). SSM restored exactly to `amazon.nova-pro-v1:0` (v3, verified).
+- FAILED→resubmit: c-6936d0a5 went FAILED → resubmit 200 (conditional repair to DISPUTED→DELIBERATING, new executionArn) → escalated. Full lifecycle exercised.
+- **Escalation was invisible**: the Route→ESCALATED branch ended in a Succeed state without touching the case row, so escalated cases stayed DELIBERATING and never reached `GET /reviews` (which scans status=ESCALATED). New EscalateLambda (conditional DELIBERATING→ESCALATED, idempotent) verified live: case ESCALATED, review queue lists it.
+- **Gallery was structurally empty**: it scanned Cases for status RULED (transient between RESOLVE and RELEASE). Now reads the Rulings table directly (also drops its now-unneeded Cases read grant).
+- Documented, not implemented (honest gaps in `docs/SECURITY.md` + risk list): `evidenceDeadline` unenforced (post-submission presigned URL confirmed live — P1), no respondent timeout, `verifyRuling` still a dummy stub.
+
+**Ship-gate proof ×3 (logged out, real Bedrock, distinct rulings)**
+- demo-1f52f83f: SETTLED, payee 10000, 9,390 tok, $0.0246, distinct reasoning (numbered contract citations)
+- demo-abf1518d: SETTLED, payee 10000, 9,641 tok, $0.0261, distinct reasoning (dated delivery account)
+- demo-1871cf04: SETTLED, payee 10000, 9,621 tok, $0.0254, distinct reasoning
+- CloudFront direct: all three `panch-rulings/{id}/ruling.json` → 200 application/json. Gallery `GET /rulings` → 4 published rulings with cost records. Two additional runs escalated (Nova returned 5000 bps against one-sided facts — spread 5000 → correctly routed to human review; the split-guard works, and per Phase 10 this is documented model variance, not a defect in the routing).
+- Fresh-checkout test: clean clone → `npm ci` (474 pkgs) → `tsc --noEmit` clean → `cdk synth` all 6 stacks. Root tsc + lint + 278/278 tests green on the branch; all stacks deployed.
+
+**Risk list for judging day (ship gate)**
+1. Nova award/reasoning variance → ~40% of demo runs escalate to human review instead of publishing (mitigated: escalation is correct behavior, review queue works; talking point, not a blocker).
+2. `verifyRuling` stub (dummy hashes) — must not be demoed as a trust feature until wired to the real chain (explicit talking point).
+3. `evidenceDeadline`/respondent timeout unimplemented (P1; documented).
+4. Guardrail PROMPT_ATTACK disabled by design (false-positives on own instructions) — structural injection defense documented in SECURITY.md.
+5. `xray:*` wildcard (AWS-managed policy shape) — documented, accepted.
+6. Pre-fix rulings row demo-058f005e has tokens 0/cost null (honest artifact of before the pipeline; keep as history).
+
+## Phase 12: real presiding arbitrator synthesis (Buffy/agent, branch `r/feat/presiding`, 2026-09-27)
+**Built:**
+- `presiding.ts` is no longer the median relay. It loads the blinded case file from S3, builds a full deliberation record (each judge's complete ruling in `<judge-ruling>` tags plus the `<evidence>` envelope; the aggregate median is deliberately withheld so the award is not anchored on it), and invokes Bedrock through the shared wrapper with role `presiding` (model + mode from `/panch/models/presiding[-mode]`; tool mode with a forced `submit_ruling` tool).
+- Output is validated by the shared wrapper (schema.parse, retries on invalid output) and then re-sanitized with the judges' evidence-citation gate (`sanitizeJudgeOutput` reused, not rebuilt): findings citing evidenceIds absent from the case file are dropped before the ruling is returned.
+- The synthesis is returned as `PresidingOutput.ruling` (new optional field in `step-functions.ts` — the only shared-contract change, submitted for review per the CONTRACTS.md rule) and as `payeeShareBps`: the award now comes from the presiding synthesis, not from `medianPayeeShareBps`.
+- `publish.ts` publishes `event.ruling` when present (findings/clauses/reasoning/confidence/uncertainties, award taken from the ruling body so the published number matches the published reasoning); the median fallback remains for the Catch -> FAILED path.
+- Prompt in `services/tribunal/prompts/presiding.md` (inlined via the `?raw` esbuild pattern): requires engaging with at least two judges by name, explicit resolution of disagreements, evidenceId-only citations, and an independent award.
+
+**Checks run:**
+- New tests: `presiding.test.ts` (wrapper called with role `presiding` and all three full judge rulings; median withheld from the prompt; synthesized award replaces the relay; fabricated evidenceIds dropped by the reused gate), `presiding.retry.test.ts` (the REAL shared wrapper over mocked AWS SDK: invalid output is retried and raw text can never pass through; 3 attempts then throw), `publish.test.ts` (synthesis preferred; median fallback intact).
+- `npm run typecheck` clean; full suite **311/311** (shared 10, tribunal 13, api 10, web 278); `npm run synth` green (esbuild bundles the new prompt + handler).
+
+**Blocked — live Bedrock validation not run (this session has no AWS credentials):**
+- The restarted session has no AWS access: the `aws` CLI is absent (exit 127) and probing through the project's own SDK returns `CredentialsProviderError: Could not load credentials from any providers` for both SSM GetParameter and Bedrock Converse (us-east-1). No `AWS_*` env vars, no `~/.aws/credentials`.
+- Therefore NOT done and NOT claimed: running presiding against a real case with real judge outputs, capturing the actual model call and raw response, quoting multi-judge reasoning sentences from a live synthesis, the `start-execution` end-to-end run to SETTLED, and confirming the published ruling is the synthesis. The unit tests use mocked AWS layers — they prove wiring and validation logic, not live model behavior.
+- To finish once credentials are available: run the presiding validation against real SSM/Bedrock, then one `aws stepfunctions start-execution` on the deployed `TribunalStateMachine` and confirm SETTLED with the published body equal to the synthesis.
+## Phase 13: Human review queue UI (Piyush, branch `p/feat/reviews-ui`, 2026-09-27)
 **Built:** the `/reviews/` page from TEAM_PLAN section H, behind the normal sign-in:
 - It lists ESCALATED cases, oldest first. Each shows the summary, amount and escalation reason; the panel median, spread and swap-test verdict; and the three judges side by side (award, confidence, reasoning, cited findings, clauses, uncertainties).
 - The decision form takes the claimant's share (sent as `payeeShareBps`) and a required note. It offers quick-fill buttons (median, each judge, even split) and a live money split. A confirmation step comes before `POST /reviews/{caseId}`.
@@ -198,3 +237,8 @@ Both findings are real, reproducible, and intentionally left unfixed for the hac
 2. `GET /reviews` returns placeholder panel data (`{ spreadBps: 5000, judges: [] }`). It needs the judges' outputs, swap runs, median, `swapConsistent`, `escalationReason` and a summary. The shapes the UI reads are listed in the README.
 3. `POST /reviews/{caseId}` does not validate `payeeShareBps` (integer 0-10000) or the note. It does not write the `Rulings` entry with `humanReviewed: true` and the note, and it uses a hardcoded ledger `seq`/`prevHash`.
 4. It returns `status: "SETTLED"`, while TEAM_PLAN says `"RESOLVED"`. The UI accepts either.
+
+**Status of the backend gaps above, as of the merge with main (Arshvir):**
+1. Escalated runs now reach the queue: PR #11 added the ESCALATE task (conditional DELIBERATING -> ESCALATED, idempotent) and it is verified live — see Phase 11.
+3. Partially fixed in #11: `payeeShareBps` validation (400 on non-integer/out-of-range) and the double-review guard (409 via the ledger conditional) are live. Still open: note validation, the `Rulings` entry with `humanReviewed: true` + note, and the mock ledger `seq`/`prevHash`.
+2 and 4 unchanged: `GET /reviews` still returns placeholder panel data (the UI's missing-data states will show until that lands), and the SETTLED/RESOLVED naming difference is accepted by the UI.

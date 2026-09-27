@@ -35,22 +35,49 @@ export class WorkflowStack extends cdk.Stack {
     new ssm.StringParameter(this, 'MaxCrossExamRounds', { parameterName: '/panch/config/max-crossexam-rounds', stringValue: '2' });
 
     // Bedrock Guardrail
-    // Uses a placeholder config for now; will be swapped for services/tribunal/guardrail-config.json once pushed.
+    // Baseline content policy: misconduct/insults/hate filters on input and
+    // output. The PROMPT_ATTACK managed filter was deliberately left out: it
+    // false-positives on the tribunal's own anti-injection instructions
+    // (verified 2026-09-27 via ApplyGuardrail — the standard judge prompt
+    // triggers PROMPT_ATTACK/HIGH GUARDRAIL_INTERVENED, so the model never
+    // runs). Injection defense is structural instead: <evidence> envelope,
+    // blinded case file, schema-validated outputs, evidence-ID sanitization.
+    // services/tribunal/guardrail-config.json can add filters (by type).
     const guardrailConfigPath = path.join(__dirname, '../../services/tribunal/guardrail-config.json');
     let guardrailName = 'PanchGuardrail';
-    let contentPolicyConfig = { filtersConfig: [] };
+    const baselineFilters: Array<Record<string, string>> = [
+      { type: 'MISCONDUCT', inputStrength: 'HIGH', outputStrength: 'HIGH' },
+      { type: 'INSULTS', inputStrength: 'HIGH', outputStrength: 'HIGH' },
+    ];
+    let fileFilters: Array<Record<string, string>> = [];
     if (fs.existsSync(guardrailConfigPath)) {
         const config = JSON.parse(fs.readFileSync(guardrailConfigPath, 'utf8'));
         guardrailName = config.name || guardrailName;
-        contentPolicyConfig = config.contentPolicyConfig || contentPolicyConfig;
+        fileFilters = config.contentPolicyConfig?.filtersConfig ?? [];
     }
-    
-    new bedrock.CfnGuardrail(this, 'TribunalGuardrail', {
+    // File filters win on type conflicts; the baseline cannot be removed.
+    const merged = new Map(baselineFilters.map(f => [f.type, f]));
+    for (const f of fileFilters) merged.set(f.type, f);
+    const contentPolicyConfig = { filtersConfig: [...merged.values()] };
+
+    const tribunalGuardrail = new bedrock.CfnGuardrail(this, 'TribunalGuardrail', {
       name: guardrailName,
-      description: 'Guardrail for AI judges',
-      contentPolicyConfig,
+      description: 'Guardrail for AI judges: prompt-attack and misconduct filters on evidence, content filters on rulings',
+      contentPolicyConfig: contentPolicyConfig as any,
       blockedInputMessaging: "Blocked input",
       blockedOutputsMessaging: "Blocked output"
+    });
+    // A versioned guardrail is required to reference it from Converse.
+    // Guardrail versions are immutable: editing the CfnGuardrail config does
+    // NOT change what an existing version serves. The version resource's id
+    // therefore carries a hash of the content policy — any config change
+    // creates a NEW version and the Lambda env (GUARDRAIL_VERSION below)
+    // follows it. (Verified the hard way: PROMPT_ATTACK was removed from the
+    // config but version 1 kept serving it and blocked every judge input.)
+    const configHash = require('crypto').createHash('sha256').update(JSON.stringify(contentPolicyConfig)).digest('hex').slice(0, 8);
+    const tribunalGuardrailVersion = new bedrock.CfnGuardrailVersion(this, `TribunalGuardrailVersion${configHash}`, {
+      guardrailIdentifier: tribunalGuardrail.attrGuardrailId,
+      description: `Panch tribunal guardrail, policy ${configHash}`,
     });
 
     // Bedrock permissions
@@ -74,27 +101,37 @@ export class WorkflowStack extends cdk.Stack {
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(30),
+        tracing: lambda.Tracing.ACTIVE,
         environment: {
           CASES_TABLE: props.dataStack.casesTable.tableName,
           LEDGER_TABLE: props.dataStack.ledgerTable.tableName,
           BUCKET: props.dataStack.evidenceBucket.bucketName,
+          RULINGS_TABLE: props.dataStack.rulingsTable.tableName,
+          GUARDRAIL_ID: tribunalGuardrail.attrGuardrailId,
+          GUARDRAIL_VERSION: tribunalGuardrailVersion.attrVersion,
         },
         // Inline .md prompt imports (judge handlers import '../prompts/judge-N.md?raw').
         // Without this the prompt file would be missing from the flat Lambda bundle.
         bundling: { loader: { '.md': 'text' } },
       });
       fn.addToRolePolicy(bedrockPolicy);
+      // Guardrails: every judge call applies the guardrail via Converse.
+      fn.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['bedrock:ApplyGuardrail'],
+        resources: [`arn:aws:bedrock:${this.region}:${this.account}:guardrail/${tribunalGuardrail.attrGuardrailId}`],
+      }));
       fn.addToRolePolicy(new iam.PolicyStatement({
         actions: ['ssm:GetParameter'],
-        resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/panch/models/*`]
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/panch/models/*`,
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/panch/pricing/bedrock/*`,
+        ]
       }));
-      fn.addToRolePolicy(new iam.PolicyStatement({
-        actions: ['s3:GetObject', 's3:PutObject', 'textract:*', 'dynamodb:*'],
-        resources: ['*'] 
-      }));
-      // Evidence/rulings buckets are SSE-KMS: S3 Get/Put/Copy on those objects needs
-      // kms:Decrypt and kms:GenerateDataKey (blind writes, judges read, publish/fail copy).
-      props.dataStack.kmsKey.grantEncryptDecrypt(fn);
+      // Scoped data-plane access (was: s3/dynamodb/textract on *).
+      props.dataStack.casesTable.grantReadData(fn);
+      props.dataStack.ledgerTable.grantReadWriteData(fn);
+      props.dataStack.evidenceBucket.grantRead(fn);
+      props.dataStack.evidenceBucket.grantPut(fn);
       return fn;
     };
 
@@ -108,8 +145,10 @@ export class WorkflowStack extends cdk.Stack {
     const aggregateLambda = createLambda('AggregateLambda', 'aggregate.ts');
     const presidingLambda = createLambda('PresidingLambda', 'presiding.ts');
     const publishLambda = createLambda('PublishLambda', 'publish.ts');
-    // publish.ts writes panch-rulings/{caseId}/ruling.json to the public rulings bucket.
+    // publish.ts writes panch-rulings/{caseId}/ruling.json to the public rulings bucket
+    // and the cost record (tokens + costUsd) to the Rulings table.
     props.dataStack.rulingsBucket.grantWrite(publishLambda);
+    props.dataStack.rulingsTable.grantWriteData(publishLambda);
     publishLambda.addEnvironment('RULINGS_BUCKET', props.dataStack.rulingsBucket.bucketName);
     const settleLambda = createLambda('SettleLambda', 'settle.ts');
     const failLambda = createLambda('FailLambda', 'failHandler.ts');
@@ -117,6 +156,27 @@ export class WorkflowStack extends cdk.Stack {
     // kms:GenerateDataKey/Encrypt, and failHandler's CopyObject also needs Decrypt.
     props.dataStack.kmsKey.grantEncryptDecrypt(publishLambda);
     props.dataStack.kmsKey.grantEncryptDecrypt(failLambda);
+    // The cached fallback ruling must land in the RULINGS bucket (the one
+    // CloudFront OAC serves) or the ruling page 403s after a failure.
+    // failHandler copies bench/demo/{caseId}/fallback-ruling.json from the
+    // evidence bucket to panch-rulings/{caseId}/ruling.json here.
+    props.dataStack.rulingsBucket.grantWrite(failLambda);
+    failLambda.addEnvironment('RULINGS_BUCKET', props.dataStack.rulingsBucket.bucketName);
+
+    // SETTLE appends RESOLVE/RELEASE through the ledger library: a single
+    // TransactWriteItems spanning Cases (conditional status flip) + Ledger
+    // (hash-chained entry). TransactWriteItems is not part of the standard
+    // table grants, so it is granted explicitly on exactly those two tables.
+    // The transaction's Update on Cases also checks the per-item
+    // dynamodb:UpdateItem permission, so that is granted explicitly too
+    // (its absence once failed the RESOLVE transaction silently).
+    [props.dataStack.casesTable, props.dataStack.ledgerTable].forEach(t =>
+      t.grant(settleLambda, 'dynamodb:TransactWriteItems')
+    );
+    props.dataStack.casesTable.grant(settleLambda, 'dynamodb:UpdateItem');
+    // FAILLambda marks the case FAILED (UpdateItem on Cases) and copies the
+    // cached fallback ruling for demo cases.
+    props.dataStack.casesTable.grant(failLambda, 'dynamodb:UpdateItem');
 
     // State Machine Tasks
     const intakeTask = new tasks.LambdaInvoke(this, 'INTAKE', { lambdaFunction: intakeLambda, payloadResponseOnly: true });
@@ -135,6 +195,15 @@ export class WorkflowStack extends cdk.Stack {
           'judge-1.$': '$.judges[0].output',
           'judge-2.$': '$.judges[1].output',
           'judge-3.$': '$.judges[2].output'
+        },
+        // This Pass has no resultPath, so its output REPLACES the state input
+        // and $.judges is gone afterwards. Capture each judge's modelId and
+        // real Converse token usage here (the only state where $.judges
+        // exists) so AGGREGATE can price the case; swapped-forward below.
+        'judgesUsage': {
+          'judge-1': { 'modelId.$': '$.judges[0].modelId', 'usage.$': '$.judges[0].usage' },
+          'judge-2': { 'modelId.$': '$.judges[1].modelId', 'usage.$': '$.judges[1].usage' },
+          'judge-3': { 'modelId.$': '$.judges[2].modelId', 'usage.$': '$.judges[2].usage' }
         }
       }
     });
@@ -186,6 +255,15 @@ export class WorkflowStack extends cdk.Stack {
           'judge-1.$': '$.swapOutputsList[0].output',
           'judge-2.$': '$.swapOutputsList[1].output',
           'judge-3.$': '$.swapOutputsList[2].output'
+        },
+        // Judges' original-call usage, captured by PrepareCrossExam while
+        // $.judges still existed and swapped forward here. Cross-exam is a
+        // pass-through (no model call) so it contributes no usage.
+        'judgesUsage.$': '$.judgesUsage',
+        'swapUsage': {
+          'judge-1': { 'modelId.$': '$.swapOutputsList[0].modelId', 'usage.$': '$.swapOutputsList[0].usage' },
+          'judge-2': { 'modelId.$': '$.swapOutputsList[1].modelId', 'usage.$': '$.swapOutputsList[1].usage' },
+          'judge-3': { 'modelId.$': '$.swapOutputsList[2].modelId', 'usage.$': '$.swapOutputsList[2].usage' }
         }
       }
     });
@@ -194,21 +272,53 @@ export class WorkflowStack extends cdk.Stack {
     
     const failTask = new tasks.LambdaInvoke(this, 'FAILED', { lambdaFunction: failLambda, payloadResponseOnly: true })
       .next(new sfn.Fail(this, 'FailWorkflow', { cause: 'Workflow Failed' }));
-      
-    const escalateTask = new sfn.Succeed(this, 'ESCALATED', { comment: 'Case Escalated to Human Review' });
+
+    // Escalation now flips the case row to ESCALATED (conditional on
+    // DELIBERATING): previously the Route -> ESCALATED branch ended in a
+    // Succeed state without touching the row, so escalated cases never
+    // appeared in GET /reviews (which scans status = ESCALATED) and their
+    // case status stayed DELIBERATING forever.
+    const escalateLambda = createLambda('EscalateLambda', 'escalate.ts');
+    props.dataStack.casesTable.grant(escalateLambda, 'dynamodb:UpdateItem');
+    const escalateTask = new tasks.LambdaInvoke(this, 'ESCALATE', { lambdaFunction: escalateLambda, payloadResponseOnly: true });
+    const escalateChain = escalateTask.next(new sfn.Succeed(this, 'ESCALATED', { comment: 'Case Escalated to Human Review' }));
     
-    const presidingTask = new tasks.LambdaInvoke(this, 'PRESIDING', { lambdaFunction: presidingLambda, payloadResponseOnly: true });
+    // PRESIDING is payloadResponseOnly and its pass-through handler (Rutu's
+    // lane, untouched) returns only { caseId, presidingRulingS3Key, ... }.
+    // The AGGREGATE output's usage/costUsd would be dropped, so they are
+    // merged back in with a resultPath merge before PUBLISH/SETTLE.
+    const presidingTask = new tasks.LambdaInvoke(this, 'PRESIDING', { lambdaFunction: presidingLambda, payloadResponseOnly: true, resultPath: '$.presidingResult' });
+    const mergePresiding = new sfn.Pass(this, 'MergePresiding', {
+      parameters: {
+        'caseId.$': '$.presidingResult.caseId',
+        'presidingRulingS3Key.$': '$.presidingResult.presidingRulingS3Key',
+        // The synthesized ruling body: without forwarding it here, PUBLISH
+        // falls back to the median judge while the award comes from the
+        // presiding determination — published award and reasoning would
+        // silently disagree.
+        'ruling.$': '$.presidingResult.ruling',
+        'payeeShareBps.$': '$.presidingResult.payeeShareBps',
+        'spreadBps.$': '$.presidingResult.spreadBps',
+        'swapConsistent.$': '$.presidingResult.swapConsistent',
+        'escalated.$': '$.presidingResult.escalated',
+        'blindedCaseFileS3Key.$': '$.presidingResult.blindedCaseFileS3Key',
+        'finalPanelOutputs.$': '$.presidingResult.finalPanelOutputs',
+        'usage.$': '$.usage',
+        'costUsd.$': '$.costUsd',
+      },
+    });
+    const presidingChain = presidingTask.next(mergePresiding);
     const publishTask = new tasks.LambdaInvoke(this, 'PUBLISH', { lambdaFunction: publishLambda, payloadResponseOnly: true });
     const settleTask = new tasks.LambdaInvoke(this, 'SETTLE', { lambdaFunction: settleLambda, payloadResponseOnly: true });
 
     const routeChoice = new sfn.Choice(this, 'Route')
-      .when(sfn.Condition.booleanEquals('$.escalated', true), escalateTask)
-      .otherwise(presidingTask.next(publishTask).next(settleTask));
+      .when(sfn.Condition.booleanEquals('$.escalated', true), escalateChain)
+      .otherwise(presidingChain.next(publishTask).next(settleTask));
 
     const retryProps = { errors: ['States.ALL'], interval: cdk.Duration.seconds(2), maxAttempts: 3, backoffRate: 2.0 };
-    [intakeTask, blindTask, judgesParallel, crossExamParallel, swapTestParallel, aggregateTask, presidingTask, publishTask, settleTask].forEach(t => t.addRetry(retryProps));
+    [intakeTask, blindTask, judgesParallel, crossExamParallel, swapTestParallel, aggregateTask, presidingTask, publishTask, settleTask, escalateTask].forEach(t => t.addRetry(retryProps));
     
-    [intakeTask, blindTask, judgesParallel, crossExamParallel, swapTestParallel, aggregateTask, presidingTask, publishTask, settleTask].forEach(t => t.addCatch(failTask, { resultPath: '$.error' }));
+    [intakeTask, blindTask, judgesParallel, crossExamParallel, swapTestParallel, aggregateTask, presidingTask, publishTask, settleTask, escalateTask].forEach(t => t.addCatch(failTask, { resultPath: '$.error' }));
 
     const definition = intakeTask
       .next(blindTask)
@@ -220,9 +330,11 @@ export class WorkflowStack extends cdk.Stack {
       .next(aggregateTask)
       .next(routeChoice);
 
+    // X-Ray tracing on the state machine (service map + per-stage traces).
     this.stateMachine = new sfn.StateMachine(this, 'TribunalStateMachine', {
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
-      timeout: cdk.Duration.minutes(30)
+      timeout: cdk.Duration.minutes(30),
+      tracingEnabled: true,
     });
     
     new cdk.CfnOutput(this, 'StateMachineArn', { value: this.stateMachine.stateMachineArn });

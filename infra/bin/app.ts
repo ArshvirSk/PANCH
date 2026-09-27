@@ -26,4 +26,9 @@ const webStack = new WebStack(app, 'PanchWebStack', {
   userPool: authStack.userPool,
   userPoolClient: authStack.userPoolClient,
 });
-const obsStack = new ObsStack(app, 'PanchObsStack', { env });
+const obsStack = new ObsStack(app, 'PanchObsStack', {
+  env,
+  stateMachineArn: workflowStack.stateMachine.stateMachineArn,
+  apiName: apiStack.api.restApiName,
+  distributionId: dataStack.rulingsDistribution.distributionId,
+});
