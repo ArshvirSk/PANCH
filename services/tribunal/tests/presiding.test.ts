@@ -72,9 +72,17 @@ const synthesizedRuling: JudgeOutput = {
   uncertainties: ['residual doubt on acceptance'],
 };
 
+// invokeJudgeModel returns { result, modelId, usage } since the day-3 cost
+// tracking merge (#11) — mock the real contract, not the old bare ruling.
+const wrapperResult = (ruling: JudgeOutput) => ({
+  result: ruling,
+  modelId: 'mistral.mistral-large-3-675b-instruct',
+  usage: { inputTokens: 1200, outputTokens: 800, totalTokens: 2000 },
+});
+
 describe('presiding synthesis handler', () => {
   it('calls Bedrock via the shared wrapper with role "presiding" and every judge\'s full ruling', async () => {
-    invokeJudgeModelMock.mockResolvedValue(synthesizedRuling);
+    invokeJudgeModelMock.mockResolvedValue(wrapperResult(synthesizedRuling));
     await handler(buildEvent());
 
     expect(invokeJudgeModelMock).toHaveBeenCalledTimes(1);
@@ -93,7 +101,7 @@ describe('presiding synthesis handler', () => {
   });
 
   it('returns the synthesized ruling and the presiding award, not the median relay', async () => {
-    invokeJudgeModelMock.mockResolvedValue(synthesizedRuling);
+    invokeJudgeModelMock.mockResolvedValue(wrapperResult(synthesizedRuling));
     const out = await handler(buildEvent());
 
     expect(out.caseId).toBe('c-test');
@@ -109,14 +117,14 @@ describe('presiding synthesis handler', () => {
   });
 
   it('drops findings citing evidenceIds that do not exist in the case file', async () => {
-    invokeJudgeModelMock.mockResolvedValue({
+    invokeJudgeModelMock.mockResolvedValue(wrapperResult({
       ...synthesizedRuling,
       findingsOfFact: [
         { fact: 'real finding', evidenceIds: ['e-1'] },
         { fact: 'fabricated finding', evidenceIds: ['e-999'] },
         { fact: 'no citation at all', evidenceIds: [] },
       ],
-    });
+    }));
 
     const out = await handler(buildEvent());
     const ruling = out.ruling!;
