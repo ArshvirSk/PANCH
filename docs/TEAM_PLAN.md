@@ -4,6 +4,13 @@
 **Duration:** 3 Days (compressed timeline — replaces the earlier 14-day Phases 1-6)
 **Effort:** Full days, paste-one-prompt-at-a-time execution, deploy and check before moving on
 
+## 0. Status (2026-09-27, post-Phase 10)
+
+- **Live on AWS with real judges.** All three model families (Nova, Mistral, Llama 3.3) run real Bedrock calls through the deployed state machine: judging, cross-exam and swap test are genuine model work. Logged-out demo (`POST /demo/run` → `SETTLED` → published ruling via CloudFront) verified end to end; 401 regression intact; 302/302 tests green. See `docs/dev-process/LOG.md` Phases 9–10.
+- **Known gap — presiding is a pass-through, not synthesis (P0 before submission):** `presiding.ts` forwards the aggregate median and panel outputs without its own Bedrock call. The TRD's "presiding synthesis" (one senior model reasoning across all three rulings) is not built yet. SSM already has `/panch/models/presiding` (Mistral) reserved for it.
+- **Known limitations, documented not hidden (Phase 10 audit on a 50/50 case):** (1) the swap-consistency check is median-blind — a judge contradicting itself across the mirror is absorbed by the median; (2) the counterfactual swap framing biases some models toward the literal reading (Nova accepted conduct in the original, denied the same conduct in the mirror). Both are recorded in LOG.md Phase 10 for the README/pitch.
+- Branches `r/feat/judges` and `r/feat/presiding` are merged/identical to main and deleted.
+
 > This plan supersedes the original 14-day phase breakdown. See `Arshvir_prompts.md`, `Rutu_3day_prompts.md` for the exact prompts run each day. Ownership, contracts, and the cut list below carry over unchanged except where marked **[UPDATED]**.
 
 ## 1. Ownership Map
@@ -112,6 +119,8 @@ Run one prompt per day (`Arshvir_prompts.md`), deploy, and check before moving o
 ### Day 2: Workflow wiring, demo, verification (✅ DONE)
 
 **Owner: Arshvir** (WorkflowStack), **depends on Rutu's handlers in `/services/tribunal`** (branch `a/feat/day2-workflow`)
+
+> **[UPDATED 2026-09-27]** Presiding: replace the pass-through `presiding.ts` with real synthesis — one Bedrock call (the presiding model from SSM) that receives all three final rulings plus the blinded case file, reconciles disagreements, and emits its own ruling body for PUBLISH. The published ruling must be the presiding model's reasoning, not the median judge's. This is the remaining P0 gap before submission.
 
 | Track          | Work                                                                                                                                                                                                                    |
 | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
