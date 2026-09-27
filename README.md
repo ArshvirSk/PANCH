@@ -40,6 +40,31 @@ The foundational Data, Auth, and API stacks are **live and fully integrated**.
 
 ---
 
+## ☁️ AWS Services Actually Used
+
+Every service below is created by a CDK stack in `infra/lib/` and exercised by the deployed system (verified Day 3). Nothing on this list is aspirational; Textract was planned in the TRD but is **not** used — evidence text extraction is seeded/uploaded directly.
+
+| Service | Where | Used for |
+|---|---|---|
+| Lambda (Node.js 20) | ApiStack, WorkflowStack, DataStack | All API handlers, tribunal tasks, evidence processing |
+| API Gateway (REST) | ApiStack | Public + Cognito-authorised HTTP API |
+| Step Functions (Standard) | WorkflowStack | Tribunal state machine: judges → cross-exam → swap test → aggregate → publish → settle, with Retry/Catch |
+| Amazon Bedrock | WorkflowStack | Three judges from three model families (Nova Pro, Mistral Large, Llama 3.3 70B) via Converse |
+| Bedrock Guardrails | WorkflowStack | Content policy applied on every judge call (guardrailConfig on Converse) |
+| DynamoDB (on-demand) | DataStack | Cases, Ledger (hash-chained, transactional), Evidence, Rulings (cost records) |
+| S3 (SSE-KMS) | DataStack | Evidence + benchmark buckets (private, KMS) |
+| S3 + CloudFront (OAC) | DataStack | Public rulings path — private bucket, CloudFront-only origin access |
+| AWS KMS | DataStack | Encryption keys for S3 buckets |
+| Cognito | AuthStack | Sign-up/sign-in; ID-token verification on protected reads |
+| Amplify Hosting | WebStack | Next.js static frontend builds |
+| CloudWatch | ObsStack | Dashboard (`Panch-Demo`), 3 alarms (failed executions, API 5xx, Bedrock throttles), EMF custom metrics (tokens, demo runs, review actions, stage durations) |
+| X-Ray | ApiStack, WorkflowStack, DataStack | Tracing on all Lambdas, the state machine, and API Gateway |
+| SNS | ObsStack | Alarm topic (`panch-alarms`) |
+| SSM Parameter Store | AuthStack, WorkflowStack | Model IDs/modes, table/bucket names, Cognito IDs, per-1k-token Bedrock pricing (`/panch/pricing/bedrock/*`) |
+| Secrets Manager | WebStack | Amplify build GitHub token |
+
+---
+
 ## 🧑‍💻 Handover: Frontend (Piyush)
 
 Your goal is to build out the Next.js `web/` application and wire it to the real APIs.

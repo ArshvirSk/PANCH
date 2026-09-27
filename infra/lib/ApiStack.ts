@@ -55,6 +55,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'handler',
       entry: path.join(__dirname, '../../services/api/health.ts'),
+      tracing: lambda.Tracing.ACTIVE,
     });
     this.api.root.addResource('health').addMethod('GET', new apigw.LambdaIntegration(healthLambda));
 
@@ -65,6 +66,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'create',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
     });
     props.dataStack.casesTable.grantReadWriteData(createCaseLambda);
@@ -74,6 +76,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'getCase',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: {
         CASES_TABLE: props.dataStack.casesTable.tableName,
         // JWT verification for non-demo cases (the method is public; demo cases
@@ -110,6 +113,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'fund',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { CASES_TABLE: props.dataStack.casesTable.tableName, LEDGER_TABLE: props.dataStack.ledgerTable.tableName }
     });
     props.dataStack.casesTable.grantReadWriteData(fundLambda);
@@ -120,6 +124,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'dispute',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { CASES_TABLE: props.dataStack.casesTable.tableName, LEDGER_TABLE: props.dataStack.ledgerTable.tableName }
     });
     props.dataStack.casesTable.grantReadWriteData(disputeLambda);
@@ -130,6 +135,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'evidenceUrl',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { EVIDENCE_BUCKET: props.dataStack.evidenceBucket.bucketName }
     });
     props.dataStack.evidenceBucket.grantPut(evidenceLambda);
@@ -139,6 +145,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'submit',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { CASES_TABLE: props.dataStack.casesTable.tableName, STATE_MACHINE_ARN: props.workflowStack.stateMachine.stateMachineArn }
     });
     props.dataStack.casesTable.grantReadWriteData(submitLambda);
@@ -154,6 +161,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'getReviews',
       entry: path.join(__dirname, '../../services/api/reviews.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
     });
     props.dataStack.casesTable.grantReadData(getReviewsLambda);
@@ -163,10 +171,16 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'postReview',
       entry: path.join(__dirname, '../../services/api/reviews.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { CASES_TABLE: props.dataStack.casesTable.tableName, LEDGER_TABLE: props.dataStack.ledgerTable.tableName }
     });
     props.dataStack.casesTable.grantReadWriteData(postReviewLambda);
     props.dataStack.ledgerTable.grantReadWriteData(postReviewLambda);
+    // postReview settles through the ledger library: TransactWriteItems spans
+    // Cases + Ledger in one transaction (not in the standard table grants).
+    [props.dataStack.casesTable, props.dataStack.ledgerTable].forEach(t =>
+      t.grant(postReviewLambda, 'dynamodb:TransactWriteItems')
+    );
     reviews.addResource('{caseId}').addMethod('POST', new apigw.LambdaIntegration(postReviewLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
 
     // Rulings
@@ -175,22 +189,29 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'getRulings',
       entry: path.join(__dirname, '../../services/api/rulings.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { 
-        CASES_TABLE: props.dataStack.casesTable.tableName,
+        RULINGS_TABLE: props.dataStack.rulingsTable.tableName,
         RULINGS_DOMAIN: props.dataStack.rulingsDistribution.distributionDomainName
       }
     });
-    props.dataStack.casesTable.grantReadData(getRulingsLambda);
+    // Read scope is the Rulings table only: the gallery lists published
+    // rulings from there (it used to scan Cases for the transient RULED
+    // status, which is why it was always empty).
+    props.dataStack.rulingsTable.grantReadData(getRulingsLambda);
     rulings.addMethod('GET', new apigw.LambdaIntegration(getRulingsLambda));
 
     const getRulingByIdLambda = new nodejs.NodejsFunction(this, 'GetRulingByIdHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'getRulingById',
       entry: path.join(__dirname, '../../services/api/rulings.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: {
+        RULINGS_TABLE: props.dataStack.rulingsTable.tableName,
         RULINGS_DOMAIN: props.dataStack.rulingsDistribution.distributionDomainName
       }
     });
+    props.dataStack.rulingsTable.grantReadData(getRulingByIdLambda);
     const rulingId = rulings.addResource('{id}');
     rulingId.addMethod('GET', new apigw.LambdaIntegration(getRulingByIdLambda));
 
@@ -198,6 +219,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'verifyRuling',
       entry: path.join(__dirname, '../../services/api/rulings.ts'),
+      tracing: lambda.Tracing.ACTIVE,
     });
     rulingId.addResource('verify').addMethod('GET', new apigw.LambdaIntegration(verifyRulingLambda));
 
@@ -206,6 +228,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'runDemo',
       entry: path.join(__dirname, '../../services/api/demo.ts'),
+      tracing: lambda.Tracing.ACTIVE,
       environment: { CASES_TABLE: props.dataStack.casesTable.tableName, STATE_MACHINE_ARN: props.workflowStack.stateMachine.stateMachineArn, BUCKET: props.dataStack.evidenceBucket.bucketName }
     });
     props.dataStack.casesTable.grantReadWriteData(demoLambda);

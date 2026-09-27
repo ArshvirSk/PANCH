@@ -73,22 +73,60 @@ export const submit = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     const caseId = event.pathParameters?.id!;
     const res = await docClient.send(new GetCommand({ TableName: CASES_TABLE, Key: { caseId } }));
     if (!res.Item) return respond(404, { error: 'Not found' });
-    if (res.Item.status !== CaseStatus.DISPUTED) return respond(400, { error: 'Must be DISPUTED to submit' });
-    
-    // Start Execution
-    const startRes = await sfnClient.send(new StartExecutionCommand({
-      stateMachineArn: STATE_MACHINE_ARN,
-      input: JSON.stringify({ caseId }),
-      name: `${caseId}-${Date.now()}`
-    }));
 
-    await docClient.send(new UpdateCommand({
-      TableName: CASES_TABLE,
-      Key: { caseId },
-      UpdateExpression: 'SET #st = :s, executionArn = :arn',
-      ExpressionAttributeNames: { '#st': 'status' },
-      ExpressionAttributeValues: { ':s': CaseStatus.DELIBERATING, ':arn': startRes.executionArn }
-    }));
+    // Submit is legal from DISPUTED. A FAILED case may be resubmitted: the
+    // tribunal never consumed escrow (no RESOLVE/RELEASE was written), so the
+    // case is repaired back to DISPUTED (evidence and funding untouched) and
+    // deliberation restarts. Any other status — including in-flight
+    // DELIBERATING (duplicate submit) and terminal SETTLED/RULED/ESCALATED —
+    // is rejected below.
+    const status = res.Item.status as CaseStatus;
+    if (status !== CaseStatus.DISPUTED && status !== CaseStatus.FAILED) {
+      return respond(400, { error: `Must be DISPUTED to submit (current status: ${status})` });
+    }
+    if (status === CaseStatus.FAILED) {
+      try {
+        await docClient.send(new UpdateCommand({
+          TableName: CASES_TABLE,
+          Key: { caseId },
+          UpdateExpression: 'SET #st = :s REMOVE #arn',
+          ConditionExpression: '#st = :expected',
+          ExpressionAttributeNames: { '#st': 'status', '#arn': 'executionArn' },
+          ExpressionAttributeValues: { ':s': CaseStatus.DISPUTED, ':expected': CaseStatus.FAILED },
+        }));
+      } catch (err: any) {
+        if (err.name === 'TransactionCanceledException' || err.name === 'ConditionalCheckFailedException') {
+          return respond(409, { error: 'Case already submitted for deliberation' });
+        }
+        throw err;
+      }
+    }
+
+    // Start Execution. The write below is conditional on status still being
+    // DISPUTED, so a duplicate submit cannot double-start the tribunal: only
+    // one request wins the transition to DELIBERATING and starts an execution.
+    let startRes;
+    try {
+      startRes = await sfnClient.send(new StartExecutionCommand({
+        stateMachineArn: STATE_MACHINE_ARN,
+        input: JSON.stringify({ caseId }),
+        name: `${caseId}-${Date.now()}`
+      }));
+
+      await docClient.send(new UpdateCommand({
+        TableName: CASES_TABLE,
+        Key: { caseId },
+        UpdateExpression: 'SET #st = :s, executionArn = :arn',
+        ConditionExpression: '#st = :expected',
+        ExpressionAttributeNames: { '#st': 'status' },
+        ExpressionAttributeValues: { ':s': CaseStatus.DELIBERATING, ':arn': startRes.executionArn, ':expected': CaseStatus.DISPUTED }
+      }));
+    } catch (err: any) {
+      if (err.name === 'TransactionCanceledException' || err.name === 'ConditionalCheckFailedException') {
+        return respond(409, { error: 'Case already submitted for deliberation' });
+      }
+      throw err;
+    }
     return respond(200, { success: true, status: CaseStatus.DELIBERATING, executionArn: startRes.executionArn });
   } catch (err: any) { return respond(500, { error: err.message }); }
 };

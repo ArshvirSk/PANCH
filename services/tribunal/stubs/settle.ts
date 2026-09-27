@@ -60,8 +60,11 @@ export const handler = async (event: SettleInput): Promise<SettleOutput> => {
 
     return { caseId, settled: true };
   } catch (err: any) {
+    // Rethrow: swallowing here once made a denied IAM action look like a
+    // successful settle (execution SUCCEEDED, case stuck DELIBERATING, no
+    // ledger entries). A settle error must fail the state so the Catch ->
+    // FAILED path runs and the failure is visible in the dashboard alarm.
     console.error('Error settling', err);
-    // Return true for stubs so we don't fail tests unnecessarily
-    return { caseId, settled: true };
+    throw err;
   }
 };
