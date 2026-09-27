@@ -3,6 +3,8 @@ export * from './types';
 export * from './constants';
 export * from './hashing';
 export * from './models';
+export * from './cost';
+export * from './metrics';
 export * from './step-functions';
 export * from './helpers';
 export * from './ledger';
