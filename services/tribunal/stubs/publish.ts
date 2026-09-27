@@ -19,22 +19,26 @@ export const handler = async (event: PublishInput): Promise<PublishOutput> => {
     };
   }
 
-  // Stub presiding synthesis: publish the median judge's output as the ruling body
-  // (same fields the ruling page validates), with panel metadata alongside.
+  // Presiding synthesis first: publish the presiding arbitrator's ruling body
+  // (same fields the ruling page validates) when the synthesis produced one.
+  // Median fallback keeps the Catch -> FAILED path publishable for demo cases.
   const entries = Object.entries(event.finalPanelOutputs ?? {});
   const sorted = [...entries].sort((a, b) => a[1].payeeShareBps - b[1].payeeShareBps);
   const median: JudgeOutput | undefined = sorted.length > 0 ? sorted[Math.floor((sorted.length - 1) / 2)][1] : undefined;
+  const ruling: JudgeOutput | undefined = event.ruling ?? median;
 
   const body = {
     caseId: event.caseId,
-    payeeShareBps: event.payeeShareBps ?? median?.payeeShareBps ?? 0,
+    // The ruling body's own award wins so the published number always matches
+    // the published reasoning; event.payeeShareBps covers legacy/absent bodies.
+    payeeShareBps: ruling?.payeeShareBps ?? event.payeeShareBps ?? 0,
     spreadBps: event.spreadBps ?? 0,
     swapConsistent: event.swapConsistent ?? true,
-    findingsOfFact: median?.findingsOfFact ?? [],
-    clausesRelied: median?.clausesRelied ?? [],
-    reasoning: median?.reasoning ?? '',
-    confidence: median?.confidence ?? 0,
-    uncertainties: median?.uncertainties ?? [],
+    findingsOfFact: ruling?.findingsOfFact ?? [],
+    clausesRelied: ruling?.clausesRelied ?? [],
+    reasoning: ruling?.reasoning ?? '',
+    confidence: ruling?.confidence ?? 0,
+    uncertainties: ruling?.uncertainties ?? [],
     finalPanelOutputs: event.finalPanelOutputs ?? {},
     publishedAt: new Date().toISOString(),
   };

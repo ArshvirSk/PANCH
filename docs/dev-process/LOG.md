@@ -195,3 +195,20 @@ Both findings are real, reproducible, and intentionally left unfixed for the hac
 4. Guardrail PROMPT_ATTACK disabled by design (false-positives on own instructions) — structural injection defense documented in SECURITY.md.
 5. `xray:*` wildcard (AWS-managed policy shape) — documented, accepted.
 6. Pre-fix rulings row demo-058f005e has tokens 0/cost null (honest artifact of before the pipeline; keep as history).
+
+## Phase 12: real presiding arbitrator synthesis (Buffy/agent, branch `r/feat/presiding`, 2026-09-27)
+**Built:**
+- `presiding.ts` is no longer the median relay. It loads the blinded case file from S3, builds a full deliberation record (each judge's complete ruling in `<judge-ruling>` tags plus the `<evidence>` envelope; the aggregate median is deliberately withheld so the award is not anchored on it), and invokes Bedrock through the shared wrapper with role `presiding` (model + mode from `/panch/models/presiding[-mode]`; tool mode with a forced `submit_ruling` tool).
+- Output is validated by the shared wrapper (schema.parse, retries on invalid output) and then re-sanitized with the judges' evidence-citation gate (`sanitizeJudgeOutput` reused, not rebuilt): findings citing evidenceIds absent from the case file are dropped before the ruling is returned.
+- The synthesis is returned as `PresidingOutput.ruling` (new optional field in `step-functions.ts` — the only shared-contract change, submitted for review per the CONTRACTS.md rule) and as `payeeShareBps`: the award now comes from the presiding synthesis, not from `medianPayeeShareBps`.
+- `publish.ts` publishes `event.ruling` when present (findings/clauses/reasoning/confidence/uncertainties, award taken from the ruling body so the published number matches the published reasoning); the median fallback remains for the Catch -> FAILED path.
+- Prompt in `services/tribunal/prompts/presiding.md` (inlined via the `?raw` esbuild pattern): requires engaging with at least two judges by name, explicit resolution of disagreements, evidenceId-only citations, and an independent award.
+
+**Checks run:**
+- New tests: `presiding.test.ts` (wrapper called with role `presiding` and all three full judge rulings; median withheld from the prompt; synthesized award replaces the relay; fabricated evidenceIds dropped by the reused gate), `presiding.retry.test.ts` (the REAL shared wrapper over mocked AWS SDK: invalid output is retried and raw text can never pass through; 3 attempts then throw), `publish.test.ts` (synthesis preferred; median fallback intact).
+- `npm run typecheck` clean; full suite **311/311** (shared 10, tribunal 13, api 10, web 278); `npm run synth` green (esbuild bundles the new prompt + handler).
+
+**Blocked — live Bedrock validation not run (this session has no AWS credentials):**
+- The restarted session has no AWS access: the `aws` CLI is absent (exit 127) and probing through the project's own SDK returns `CredentialsProviderError: Could not load credentials from any providers` for both SSM GetParameter and Bedrock Converse (us-east-1). No `AWS_*` env vars, no `~/.aws/credentials`.
+- Therefore NOT done and NOT claimed: running presiding against a real case with real judge outputs, capturing the actual model call and raw response, quoting multi-judge reasoning sentences from a live synthesis, the `start-execution` end-to-end run to SETTLED, and confirming the published ruling is the synthesis. The unit tests use mocked AWS layers — they prove wiring and validation logic, not live model behavior.
+- To finish once credentials are available: run the presiding validation against real SSM/Bedrock, then one `aws stepfunctions start-execution` on the deployed `TribunalStateMachine` and confirm SETTLED with the published body equal to the synthesis.

@@ -89,6 +89,9 @@ export interface PresidingInput extends AggregateOutput {
 export interface PresidingOutput {
   caseId: string;
   presidingRulingS3Key: string; // Final synthesized ruling
+  // The presiding arbitrator's synthesized ruling body (same shape as JudgeOutput).
+  // When present, PUBLISH publishes this instead of the median judge's output.
+  ruling?: JudgeOutput;
   // Passed through (PRESIDING is payloadResponseOnly) so PUBLISH/SETTLE keep their inputs.
   payeeShareBps?: number;
   spreadBps?: number;

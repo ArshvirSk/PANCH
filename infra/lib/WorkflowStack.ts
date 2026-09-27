@@ -292,6 +292,11 @@ export class WorkflowStack extends cdk.Stack {
       parameters: {
         'caseId.$': '$.presidingResult.caseId',
         'presidingRulingS3Key.$': '$.presidingResult.presidingRulingS3Key',
+        // The synthesized ruling body: without forwarding it here, PUBLISH
+        // falls back to the median judge while the award comes from the
+        // presiding determination — published award and reasoning would
+        // silently disagree.
+        'ruling.$': '$.presidingResult.ruling',
         'payeeShareBps.$': '$.presidingResult.payeeShareBps',
         'spreadBps.$': '$.presidingResult.spreadBps',
         'swapConsistent.$': '$.presidingResult.swapConsistent',
