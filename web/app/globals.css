@@ -607,6 +607,73 @@ input[type='file']:focus-visible + .dropzone, .dropzone:focus-within { box-shado
 .award-foot { padding: 1.25rem clamp(1.5rem, 4vw, 2.5rem); background: var(--surface-2); color: var(--muted); font-size: 0.88rem; }
 .award-foot .icon { color: var(--success); }
 
+/* ---------- Review queue ---------- */
+textarea {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: 11px;
+  padding: 0.65rem 0.8rem; width: 100%; resize: vertical; min-height: 110px; line-height: 1.5;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+textarea::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
+textarea:hover:not(:disabled) { border-color: var(--muted); }
+textarea:focus-visible { border-color: var(--primary); box-shadow: var(--focus); border-radius: 11px; }
+textarea[aria-invalid='true'] { border-color: var(--danger); }
+textarea:disabled { opacity: 0.6; }
+
+.review-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem 1rem; flex-wrap: wrap; }
+.review-head .eyebrow { margin-bottom: 0.25rem; }
+.review-amount { font-family: var(--font-serif); font-size: clamp(1.6rem, 3.5vw, 2rem); margin: 0; }
+.review-subhead { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.6rem; }
+.review-summary { padding: 1rem 1.1rem; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+.review-summary .icon { color: var(--warning); }
+.prose-sm { white-space: pre-wrap; color: var(--text-2); max-width: 75ch; }
+
+.review-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 0.75rem; margin-inline: 0; margin-bottom: 0; }
+.review-stats > div { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.review-stats dt { font-size: 0.8rem; font-weight: 650; color: var(--muted); }
+.review-stats dd { margin: 0; font-family: var(--font-serif); font-size: 1.5rem; font-weight: 600; line-height: 1.2; }
+.review-stats dd.stat-note { font-family: var(--font-sans); font-size: 0.875rem; font-weight: 400; color: var(--muted); }
+.swap-overall-ok { color: var(--success); }
+.swap-overall-bad { color: var(--danger); }
+.swap-overall-warn { color: var(--warning); }
+.review-stats dd.stat-note-bad { color: var(--danger); font-weight: 600; }
+
+.judges-grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); align-items: start; }
+.judge-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.judge-head { display: flex; align-items: center; gap: 0.5rem; }
+.judge-head h4 { margin: 0; font-size: 0.95rem; font-weight: 700; }
+.judge-seat { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--surface-2); color: var(--primary-text); }
+.judge-award { font-family: var(--font-serif); font-size: 2rem; font-weight: 600; line-height: 1.1; margin: 0; }
+.split-bar-sm { height: 8px; }
+.judge-reasoning { white-space: pre-wrap; font-size: 0.92rem; color: var(--text-2); overflow-wrap: anywhere; margin: 0; }
+.swap-line { display: flex; gap: 0.4rem; align-items: flex-start; font-size: 0.85rem; margin: 0; padding: 0.45rem 0.6rem; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); }
+.swap-line .icon { margin-top: 0.2rem; }
+.swap-consistent { border-color: var(--success-border); background: var(--success-soft); }
+.swap-consistent strong, .swap-consistent .icon { color: var(--success); }
+.swap-shifted { border-color: var(--warning-border); background: var(--warning-soft); }
+.swap-shifted strong, .swap-shifted .icon { color: var(--warning); }
+.swap-flipped { border-color: var(--danger-border); background: var(--danger-soft); }
+.swap-flipped strong, .swap-flipped .icon { color: var(--danger); }
+.judge-more { border-top: 1px solid var(--border); padding-top: 0.5rem; font-size: 0.88rem; }
+.judge-more summary { cursor: pointer; font-weight: 600; color: var(--text-2); }
+.judge-more ul { list-style: disc; padding-left: 1.1rem; margin-top: 0.5rem; display: grid; gap: 0.4rem; color: var(--text-2); overflow-wrap: anywhere; }
+.judge-more .chip { margin-left: 0.2rem; }
+
+.decision { border-top: 1px solid var(--border); padding-top: 1.25rem; }
+.decision-grid { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }
+@media (min-width: 820px) { .decision-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); } }
+.input-suffix { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 11px; background: var(--surface); max-width: 220px; overflow: hidden; }
+.input-suffix:focus-within { border-color: var(--primary); box-shadow: var(--focus); }
+.input-suffix input { border: none; border-radius: 0; font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.input-suffix input:focus-visible { box-shadow: none; }
+.input-suffix:has(input[aria-invalid='true']) { border-color: var(--danger); }
+.input-suffix > span { padding: 0 0.85rem; color: var(--muted); font-weight: 600; }
+.presets { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.35rem; }
+.preset { display: inline-flex; align-items: center; gap: 0.35rem; font: inherit; font-size: 0.82rem; font-weight: 550; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 999px; padding: 0.3rem 0.7rem; min-height: 32px; cursor: pointer; }
+.preset:hover:not(:disabled) { border-color: var(--primary); color: var(--primary-text); }
+.preset:disabled { opacity: 0.55; cursor: not-allowed; }
+.preset .tabular { font-weight: 700; }
+
 /* ---------- Print: the ruling as a clean document ---------- */
 @media print {
   .site-header, .site-footer, .skip-link, .no-print, .config-banner { display: none !important; }

@@ -60,3 +60,42 @@ export interface EvidenceUploadRequest {
   contentType: string;
   contentLength: number;
 }
+
+/** One judge's seat in the panel record. `output` is null when it could not be read. */
+export interface PanelJudge {
+  name: string;
+  output: Ruling | null;
+}
+
+/** An ESCALATED case as the review queue shows it (GET /reviews, TEAM_PLAN section H). */
+export interface ReviewCase {
+  caseId: string;
+  status: Status;
+  amountCents: number;
+  currency: string;
+  createdAt?: string;
+  /** Party identifiers, used only to warn a reviewer who is a party. Never displayed. */
+  claimantId?: string;
+  respondentId?: string;
+  summary?: string;
+  escalationReason?: string;
+  judges: PanelJudge[];
+  /** Swap-test runs, keyed like `judges`. Empty when the API sent none. */
+  swapJudges: PanelJudge[];
+  spreadBps?: number;
+  /** True when the API sent no spread and it was worked out from the judges' awards. */
+  spreadComputed: boolean;
+  medianBps?: number;
+  swapConsistent?: boolean;
+}
+
+/** POST /reviews/{caseId}. */
+export interface ReviewDecision {
+  payeeShareBps: number;
+  note: string;
+}
+
+export interface ReviewResult {
+  caseId: string;
+  status: string;
+}

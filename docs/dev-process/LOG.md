@@ -212,3 +212,33 @@ Both findings are real, reproducible, and intentionally left unfixed for the hac
 - The restarted session has no AWS access: the `aws` CLI is absent (exit 127) and probing through the project's own SDK returns `CredentialsProviderError: Could not load credentials from any providers` for both SSM GetParameter and Bedrock Converse (us-east-1). No `AWS_*` env vars, no `~/.aws/credentials`.
 - Therefore NOT done and NOT claimed: running presiding against a real case with real judge outputs, capturing the actual model call and raw response, quoting multi-judge reasoning sentences from a live synthesis, the `start-execution` end-to-end run to SETTLED, and confirming the published ruling is the synthesis. The unit tests use mocked AWS layers — they prove wiring and validation logic, not live model behavior.
 - To finish once credentials are available: run the presiding validation against real SSM/Bedrock, then one `aws stepfunctions start-execution` on the deployed `TribunalStateMachine` and confirm SETTLED with the published body equal to the synthesis.
+## Phase 13: Human review queue UI (Piyush, branch `p/feat/reviews-ui`, 2026-09-27)
+**Built:** the `/reviews/` page from TEAM_PLAN section H, behind the normal sign-in:
+- It lists ESCALATED cases, oldest first. Each shows the summary, amount and escalation reason; the panel median, spread and swap-test verdict; and the three judges side by side (award, confidence, reasoning, cited findings, clauses, uncertainties).
+- The decision form takes the claimant's share (sent as `payeeShareBps`) and a required note. It offers quick-fill buttons (median, each judge, even split) and a live money split. A confirmation step comes before `POST /reviews/{caseId}`.
+- There is a "Reviews" link in the header for signed-in users.
+- Scope cut, shown on the page and in the README: any signed-in account can review. A reviewer who is a party to the case is warned. Party identities are never shown.
+
+**What the agent (Claude Code) did:**
+- Read the contracts first (`services/api/reviews.ts`, `step-functions.ts`, the escalated fixture). Because `GET /reviews` is still being built, it wrote a reader that accepts every shape the contracts allow and says plainly when a part is missing.
+- Added a per-judge swap check: it maps each swap award back (`10000 − award`) and flags a judge whose winner changes sides. This surfaces the median-blind swap limitation from phase 10 to the reviewer, without changing the backend.
+- Wrote 131 new tests (409 web tests in total):
+  - every response shape, the swap maths, percentage parsing and money rounding;
+  - the API client: auth, one retry for reads, never retrying the POST;
+  - the page: validation, confirmation, double-submit, a case another reviewer already resolved, failed saves that keep the form, hostile text, and signed-out access.
+- Checked with deliberate breakages that the conflict and double-submit tests fail when those guards are removed.
+- Added a 65-check browser suite, run in Chrome and Edge against a stand-in API that settles through the real shared ledger rules. It covers the full lifecycle (create, fund, dispute, submit, escalate, review, SETTLED with RESOLVE and RELEASE in the ledger), two reviewers racing, 503/500/offline/401 handling, keyboard-only use, axe WCAG 2.1 AA in light and dark (0 issues), phone layout, XSS and CSP.
+- The scan caught one real bug (captions inside a `<dl>` group that were not `<dt>`/`<dd>`), which was fixed. Screenshot review led to a spacing fix and a clearer swap-test label.
+
+**Checks run:** lint, typecheck, all tests (409 web, plus shared and tribunal), `next build`, `cdk synth`; both browser suites (65/65 and 95/95) in Chrome and Edge. Live API: `GET /reviews` and `POST /reviews/{id}` are deployed behind the Cognito authorizer, answer a CORS-readable 401 without a token, and pass the POST preflight.
+
+**Backend gaps found (Arshvir's area, not changed here):**
+1. Nothing sets a case's status to `ESCALATED` or saves the panel record when the workflow escalates. `ESCALATED` is a `Succeed` state in `WorkflowStack`, so escalated runs never reach the queue.
+2. `GET /reviews` returns placeholder panel data (`{ spreadBps: 5000, judges: [] }`). It needs the judges' outputs, swap runs, median, `swapConsistent`, `escalationReason` and a summary. The shapes the UI reads are listed in the README.
+3. `POST /reviews/{caseId}` does not validate `payeeShareBps` (integer 0-10000) or the note. It does not write the `Rulings` entry with `humanReviewed: true` and the note, and it uses a hardcoded ledger `seq`/`prevHash`.
+4. It returns `status: "SETTLED"`, while TEAM_PLAN says `"RESOLVED"`. The UI accepts either.
+
+**Status of the backend gaps above, as of the merge with main (Arshvir):**
+1. Escalated runs now reach the queue: PR #11 added the ESCALATE task (conditional DELIBERATING -> ESCALATED, idempotent) and it is verified live — see Phase 11.
+3. Partially fixed in #11: `payeeShareBps` validation (400 on non-integer/out-of-range) and the double-review guard (409 via the ledger conditional) are live. Still open: note validation, the `Rulings` entry with `humanReviewed: true` + note, and the mock ledger `seq`/`prevHash`.
+2 and 4 unchanged: `GET /reviews` still returns placeholder panel data (the UI's missing-data states will show until that lands), and the SETTLED/RESOLVED naming difference is accepted by the UI.

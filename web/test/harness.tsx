@@ -36,6 +36,8 @@ export function mockApi(overrides: Partial<Record<keyof ApiClient, unknown>> = {
     uploadToPresignedUrl: vi.fn(),
     submitCase: vi.fn(),
     getRuling: vi.fn(),
+    getReviews: vi.fn(),
+    resolveReview: vi.fn(),
     runDemo: vi.fn(),
     ...overrides,
   } as unknown as { [K in keyof ApiClient]: ReturnType<typeof vi.fn> };

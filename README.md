@@ -112,8 +112,29 @@ The `web/` app covers everything above. It is a Next.js static export, hosted by
 | `/cases/new/` | Yes | Create a case as claimant (`POST /cases`) |
 | `/case/?id=` | Yes | Fund as respondent, dispute, upload evidence (drag and drop, presigned S3 PUT), submit, live polling while deliberating, ledger receipts. Fund, dispute and submit ask for confirmation |
 | `/ruling/?id=` | No | Public ruling as a formal award: split, confidence, reasoning, cited findings, clauses (`GET /rulings/{id}`) |
+| `/reviews/` | Yes | Human review queue for escalated cases: summary, amount, the three judges side by side, spread, swap test, and a form to settle the case (`GET /reviews`, `POST /reviews/{caseId}`) |
 
 Every protected call sends the Cognito ID token in `Authorization`. Roles come from the case: the claimant is the creator's Cognito `sub`, and the respondent is the account whose email matches `respondentEmail`.
+
+**Human review queue (`/reviews/`, TEAM_PLAN section H):**
+- **Scope cut, stated plainly:** any signed-in account can act as the reviewer. There is no reviewer role or invite flow. The page warns a reviewer who is a party to the case.
+- **Oldest case first.** Each case shows:
+  - the summary, amount and escalation reason;
+  - the panel median, spread and swap-test verdict;
+  - each judge's award, confidence, reasoning, cited findings, clauses and uncertainties, side by side.
+- **Per-judge swap check:** the page maps each swap run back (`10000 − swap award`) and marks a judge *Flipped* when the winner changes sides. The panel's `swapConsistent` compares medians, so this per-judge flag is how a reviewer sees the median-blind case described in LOG.md phase 10.
+- **Blind review:** party names and emails are never shown, the same as for the judges.
+- **The decision form:**
+  - The reviewer enters the claimant's share as a percentage (sent as `payeeShareBps`) and a required note of up to 1,000 characters.
+  - Quick-fill buttons offer the median, each judge's award and an even split, with a live money split.
+  - A confirmation step comes before `POST /reviews/{caseId}` with `{ payeeShareBps, note }`.
+  - If another reviewer settled the case first (400 `Case must be ESCALATED`), the page says so and refreshes the queue.
+- **Accepted `GET /reviews` shapes:** a list, or `{ items | reviews | cases: [...] }`. Each item is a Cases item with the panel record under `panelOutputs` or at the top level:
+  - **Judges:** `judges`, or `finalPanelOutputs` (array, `{ judgeName, output }` task results, or keyed by judge name).
+  - **Swap runs:** `swapOutputs`.
+  - **Panel values:** `spreadBps`, `medianPayeeShareBps`, `swapConsistent` and `escalationReason`, flat or under `aggregate`.
+  - **Summary:** `summary` or `caseSummary`.
+  - **Missing parts:** the page says so instead of guessing.
 
 **Reliability and security:**
 - API calls time out after 20 s and uploads after 120 s.
@@ -123,8 +144,15 @@ Every protected call sends the Cognito ID token in `Authorization`. Roles come f
 - The site sends a CSP and other security headers from `web/security-headers.json`, applied by `WebStack`.
 
 **Tests:**
-- `npm run test --workspace=web` runs 274 unit and component tests (Vitest, Testing Library, jsdom). They cover every case status for each role, the dialogs, polling, uploads, login and hostile input.
-- A 95-check browser suite passes in Chrome and Edge. It covers accessibility (axe, WCAG 2.1 AA, light and dark), offline and failing APIs, conflicting edits, XSS, keyboard use, mobile layout, performance budgets and zero CSP violations. It lives outside the repo; see `docs/dev-process/LOG.md`.
+- `npm run test --workspace=web` runs 409 unit and component tests (Vitest, Testing Library, jsdom). They cover:
+  - every case status for each role;
+  - the dialogs, polling, uploads and login;
+  - every accepted review-queue shape, the swap-test maths and the review form;
+  - hostile input.
+- Two browser suites pass in Chrome and Edge: 95 checks for the case flow and 65 for the review queue. They live outside the repo; see `docs/dev-process/LOG.md`. They cover:
+  - accessibility (axe, WCAG 2.1 AA, light and dark) and keyboard use;
+  - offline and failing APIs, conflicting edits and two reviewers racing;
+  - XSS, mobile layout, performance budgets and zero CSP violations.
 
 **Run locally:**
 ```bash
