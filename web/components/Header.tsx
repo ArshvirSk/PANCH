@@ -51,7 +51,10 @@ export function Header() {
           <Link href="/#demo" className="nav-link">Demo</Link>
           <Link href="/ruling/?id=c-104" className={`nav-link${pathname === '/ruling/' ? ' active' : ''}`}>Sample ruling</Link>
           {status === 'signedIn' && (
-            <Link href="/cases/" className={`nav-link${isActive('/cases/') ? ' active' : ''}`}>My cases</Link>
+            <>
+              <Link href="/cases/" className={`nav-link${isActive('/cases/') ? ' active' : ''}`}>My cases</Link>
+              <Link href="/reviews/" className={`nav-link${isActive('/reviews/') ? ' active' : ''}`}>Reviews</Link>
+            </>
           )}
           <span className="nav-divider" aria-hidden="true" />
           {status === 'signedIn' ? (
