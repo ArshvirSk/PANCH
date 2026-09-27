@@ -7,11 +7,15 @@ import type {
   EvidenceUploadTicket,
   HealthResult,
   LedgerReceipt,
+  ReviewCase,
+  ReviewDecision,
+  ReviewResult,
   Ruling,
   Status,
   TimelineStage,
 } from './types';
 import { parseRuling } from './ruling';
+import { normalizeReviewCase, reviewItems } from './reviews';
 
 export class ApiError extends Error {
   /** HTTP status, or 0 when the request never reached the server. */
@@ -249,6 +253,21 @@ export function createApiClient(options: ApiClientOptions) {
         if (err instanceof ApiError && err.status === 404) return null;
         throw err;
       }
+    },
+
+    /** Escalated cases waiting for a human decision. Items without a case ID are skipped. */
+    async getReviews(): Promise<ReviewCase[]> {
+      const items = reviewItems(await request('reviews', { auth: true }));
+      if (!items) throw new ApiError(502, 'The API returned an unexpected review queue.');
+      return items.flatMap((item) => normalizeReviewCase(item) ?? []);
+    },
+
+    /** Settles an escalated case with the reviewer's award. A write, so it is never retried. */
+    async resolveReview(caseId: string, decision: ReviewDecision): Promise<ReviewResult> {
+      const body = asObject(
+        await request(`reviews/${encodeURIComponent(caseId)}`, { method: 'POST', body: decision, auth: true }),
+      );
+      return { caseId: asString(body.caseId) ?? caseId, status: asString(body.status) ?? 'RESOLVED' };
     },
 
     /** Public, no login. */
