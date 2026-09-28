@@ -548,3 +548,59 @@ pointer to verify-access.sh. No other docs/ edits.
 **Verification:** verify-access.sh 18/18 PASS run twice (probe objects
 deleted after each run); tsc/eslint/tests untouched by this change (script
 + docs only, no runtime code); no deploy required.
+
+## Phase 21 — ship-gate prep: cost/abuse check on the live stack + SECURITY.md re-audit (Arshvir/agent, branch `a/feat/ship-gate-prep`, 2026-09-29)
+
+Ship-gate prep while Rutu and Piyush finish their lanes. Read-only live
+checks plus one docs/ change (SECURITY.md). **No infra gap found — nothing
+deployed, no CDK change.**
+
+**Cost & abuse checks (all confirmed against the DEPLOYED stack, not code):**
+- `/demo/run` API Gateway throttle live on the prod stage: method setting
+  `/demo/run/POST` → `throttlingRateLimit 2.0 / throttlingBurstLimit 5`
+  (read via `get-stage` `methodSettings`; `get-method-settings` is missing
+  from this aws-cli v2.37.1 build).
+- DynamoDB daily cap live: `DEMO_CAP_YYYY-MM-DD` counter rows in Cases
+  (25 / 13 / 8 for Sep 26/27/28) — separate keys per UTC date prove the cap
+  resets at UTC midnight (`new Date().toISOString().substring(0,10)` UTC).
+  Cap is the code constant 30 (no env override); 429 above 30.
+- Budget: `panch-monthly` $20 monthly cost budget with 85%/100% ACTUAL and
+  100% FORECASTED email notifications to the owner.
+- Alarms: all three (TribunalExecutionsFailed, Api5xx on 5XXError,
+  BedrockThrottles on InvocationThrottles) are in OK state, each with the
+  `panch-alarms` SNS topic as its only alarm action. **Gap found:
+  `panch-alarms` has ZERO subscriptions** — alarm notifications currently go
+  nowhere. Fixing needs Arshvir's (or the team's) confirmed email address —
+  a one-time console/CLI step outside CDK; do not guess it.
+- Demo handler health: 47 invocations in 3 days, max duration 1.83s vs the
+  3s timeout, zero timeouts (the async Gateway→Lambda integration retries
+  for up to ~10s, so headroom is fine at current latency).
+- **Spend to date: $1.153** actual (budget `CalculatedSpend`, ~5.8% of the
+  $20 monthly budget).
+- **Per-case cost range (TRD §12 real number):** n=13 published rulings with
+  costUsd — **min $0.0245, max $0.0419, median $0.0261, mean $0.0294**.
+  Confirms the LOG Phase 11–17 range (~$0.025–0.04, 12 real Bedrock calls
+  per case, ~9–15k tokens).
+
+**docs/SECURITY.md re-audit (the single docs/ change — flagged to Piyush so
+his README/limitations page stays consistent):** verified against the
+deployed stacks and updated: evidenceDeadline enforcement (Phase 18) moved
+out of the gaps list into a new "Landed since the Day 3 pass" section;
+`verifyRuling` stub wording replaced with the real Phase 14 recompute
+behavior; new "Attribution and recovery" (CloudTrail + S3 versioning) and
+"Deploy coordination" (require-deploy-lock.sh) bullets; post-review and the
+response-overdue sweeper's least-privilege shape added to the IAM section;
+header marked as re-audited 2026-09-29. Kept stated plainly: no respondent
+timeout auto-adjudication, PROMPT_ATTACK filter disabled by design
+(false-positives on the judges' own instructions), remaining `xray:*`
+wildcard. Newly added as a gap: the SNS subscription gap above.
+Injection-test result deliberately left out — it lands from Rutu's
+`bench/RESULTS.md` in Part 2B.
+
+**PR reviews:** no open PRs from Rutu or Piyush at time of writing; review
+comments to follow as they open (their lanes are still in progress).
+
+**Verification:** every number above was read from the deployed stack (API
+Gateway stage, DynamoDB items, Budgets API, CloudWatch alarms, SNS topic,
+Lambda config/logs, Rulings scan); `npm test` 409/409 green; docs-only
+change, no deploy needed.
