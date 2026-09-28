@@ -304,3 +304,59 @@ This closes gap 2 from Phase 13 and risk 2 from the Phase 11 risk list. Both end
 **Explicitly not started (per instructions):** the 30–50 case benchmark and the bias-eval dashboard — cut-list/P1.
 
 **To finish when AWS credentials are available:** per case — seed evidence + fallback keys per the README runbook, `start-execution`, record the settled award vs `gold.json` (report divergences as findings), confirm the fallback is reachable under `panch-rulings/{caseId}/ruling.json` if the run fails, and log each result here.
+
+## Phase 16: demo-case validation on the live stack + two fixes from the findings (Buffy/agent, on main, 2026-09-28)
+
+Rutu's three bench cases were executed end to end against the deployed stacks
+(account 890742603792, branch `r/feat/demo-cases` pre-merge, then the fixes on
+main after PR #13 merged). All caseIds below are synthetic.
+
+**Live results vs gold (before the fixes):**
+- Case A (`demo-ba-a-354484`): SETTLED, award 10000 = gold 10000. Unanimous
+  panel, spread 0, swapConsistent true; CloudFront bytes match `rulingSha256`;
+  ledger RESOLVE->RELEASE; cost $0.0393 / 14,428 tokens.
+- Case B (`demo-ba-b-a37b64`): panel unanimous 0 = gold 0, but the run
+  ESCALATED twice. Root cause: the swap-test preamble asked what the mirrored
+  claimant should be *paid*, so all three swaps returned 0 (the liability) and
+  |0 - (10000-0)| = 10000 > 3000 flagged swapConsistent false. Also reproduced
+  on the public path once (unanimous-award escalation).
+- Case C (`demo-ba-c-d3ec86`): ESCALATED by design; panel median 5000 = gold
+  5000, judges 5000/80/7000 (spread 6920), panel record persisted live.
+
+**Fallback/Catch proof:** exercised twice organically (real ESCALATE failures)
+and once by directly invoking the deployed FailLambda on a fresh case: the
+fallback landed at `panch-rulings/{caseId}/ruling.json`, CloudFront 200, bytes
+identical to the seeded fixture, `fallback: true`, escrow untouched. `ruling.md`
+is 403 for every ruling (publish never writes it) — the fixture .md files are
+currently dead weight; noted for Rutu.
+
+**Bug found live (fixed this phase):** re-running a SETTLED case appended a
+second RESOLVE/RELEASE pair (scratch case ended with 4 ledger entries).
+`validateTransition` was never enforced inside `appendLedgerEntry`.
+
+**Fixes (commits `1ca4a10`, `8c45e75`, deployed to PanchWorkflowStack +
+PanchApiStack):**
+1. Swap-test preamble now binds the answer to the claimant's KEPT share
+   (10000 minus the payout to the performer), with the reasoning documented
+   in-code. `aggregate.ts` was re-derived and is correct as-is (correction to
+   the earlier session note).
+2. `appendLedgerEntry` enforces `validateTransition` before the hash and the
+   transaction; 3 new guard unit tests.
+
+**Post-fix live proof:**
+- Fresh Case B (`demo-ba-bfix-45a736`, seeded DELIBERATING like runDemo):
+  SETTLED at 0 bps = gold. Swaps now 0/10000/10000 -> swapMedian 10000 ->
+  swapConsistent true, escalated false. Presiding synthesis award 0 @ 0.98;
+  $0.0315 / 13,781 tokens; verify match true.
+- Re-run of the settled case: SETTLE now fails loudly - SettleLambda logged
+  "Error: Double-resolve rejected at validateTransition", execution FAILED via
+  Catch, ledger stayed at exactly 2 entries (was 4 on the unfixed stack).
+- Public path logged out: one run ESCALATED (correct 404s, panel record live),
+  one run SETTLED at 10000 with verify match true. 455 unit tests green
+  (13 shared / 20 api / 13 tribunal / 409 web); eslint + cdk synth clean.
+
+**Left as known follow-ups:** swap tests cost 3 extra Bedrock calls per case
+and now agree with unanimous panels by construction - consider skipping them
+when spread = 0 (cost, not correctness); case seeds must be DELIBERATING
+before start-execution now that the ledger guard is strict (the bench README
+runbook should say so); ruling.md is never published.
