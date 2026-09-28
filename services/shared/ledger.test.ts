@@ -1,4 +1,4 @@
-import { validateTransition } from './ledger';
+import { validateTransition, appendLedgerEntry } from './ledger';
 import { CaseStatus, LedgerEvent } from './types';
 import { describe, it, expect } from 'vitest';
 import { computeEntryHash } from './hashing';
@@ -38,5 +38,35 @@ describe('Hash chain integrity', () => {
     const hash2 = computeEntryHash(hash1, LedgerEvent.DISPUTE, 1000, 'c-1');
     expect(hash2).not.toBe(hash1);
     expect(hash2.length).toBe(64); // sha256 hex
+  });
+});
+
+describe('appendLedgerEntry transition guard', () => {
+  // The guard throws before any hash or transaction is built, so these calls
+  // never touch DynamoDB. If the guard were removed, the call would fall
+  // through to a real TransactWriteItems and fail differently (credentials or
+  // a conditional-write error), so the assertions still catch the regression.
+  it('rejects a second RESOLVE on an already-SETTLED case (double settlement)', async () => {
+    await expect(appendLedgerEntry({
+      caseId: 'c-guard', event: LedgerEvent.RESOLVE, amountCents: 1000,
+      expectedStatus: CaseStatus.SETTLED, newStatus: CaseStatus.RULED,
+      seq: 3, prevHash: '0'.repeat(64),
+    })).rejects.toThrow('Double-resolve rejected');
+  });
+
+  it('rejects RESOLVE from RULED (re-run of a ruled case)', async () => {
+    await expect(appendLedgerEntry({
+      caseId: 'c-guard', event: LedgerEvent.RESOLVE, amountCents: 1000,
+      expectedStatus: CaseStatus.RULED, newStatus: CaseStatus.RULED,
+      seq: 3, prevHash: '0'.repeat(64),
+    })).rejects.toThrow('Double-resolve rejected');
+  });
+
+  it('rejects RELEASE from a status that is not RULED', async () => {
+    await expect(appendLedgerEntry({
+      caseId: 'c-guard', event: LedgerEvent.RELEASE, amountCents: 1000,
+      expectedStatus: CaseStatus.DELIBERATING, newStatus: CaseStatus.SETTLED,
+      seq: 3, prevHash: '0'.repeat(64),
+    })).rejects.toThrow('Illegal transition');
   });
 });

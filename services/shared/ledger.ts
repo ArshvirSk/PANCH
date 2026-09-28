@@ -48,6 +48,14 @@ export function validateTransition(currentStatus: CaseStatus, event: LedgerEvent
  * Appends a ledger entry and updates case status via a DynamoDB Transaction.
  */
 export async function appendLedgerEntry(input: LedgerTransition) {
+  // Enforce the state machine before writing anything. validateTransition was
+  // only called by the API handlers, so nothing stopped a workflow re-run of
+  // an already-ruled case from appending a second RESOLVE/RELEASE pair
+  // (reproduced live 2026-09-28: one scratch case ended with four ledger
+  // entries across two executions). The guard runs before the hash/transaction
+  // so an illegal move writes nothing at all.
+  validateTransition(input.expectedStatus, input.event);
+
   const entryHash = computeEntryHash(input.prevHash, input.event, input.amountCents, input.caseId);
   
   const cmd = new TransactWriteCommand({
