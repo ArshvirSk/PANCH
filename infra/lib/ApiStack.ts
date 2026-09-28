@@ -193,7 +193,12 @@ export class ApiStack extends cdk.Stack {
       handler: 'postReview',
       entry: path.join(__dirname, '../../services/api/reviews.ts'),
       tracing: lambda.Tracing.ACTIVE,
-      environment: { CASES_TABLE: props.dataStack.casesTable.tableName, LEDGER_TABLE: props.dataStack.ledgerTable.tableName }
+      environment: {
+        CASES_TABLE: props.dataStack.casesTable.tableName,
+        LEDGER_TABLE: props.dataStack.ledgerTable.tableName,
+        RULINGS_TABLE: props.dataStack.rulingsTable.tableName,
+        RULINGS_BUCKET: props.dataStack.rulingsBucket.bucketName,
+      }
     });
     props.dataStack.casesTable.grantReadWriteData(postReviewLambda);
     props.dataStack.ledgerTable.grantReadWriteData(postReviewLambda);
@@ -202,6 +207,12 @@ export class ApiStack extends cdk.Stack {
     [props.dataStack.casesTable, props.dataStack.ledgerTable].forEach(t =>
       t.grant(postReviewLambda, 'dynamodb:TransactWriteItems')
     );
+    // Human rulings get the same durable record as AI ones: a published body
+    // in the rulings bucket (SSE-KMS: PutObject also needs the KMS grant) and
+    // a Rulings table row so the gallery lists it and /verify can run.
+    props.dataStack.rulingsTable.grantWriteData(postReviewLambda);
+    props.dataStack.rulingsBucket.grantWrite(postReviewLambda);
+    props.dataStack.kmsKey.grantEncryptDecrypt(postReviewLambda);
     reviews.addResource('{caseId}').addMethod('POST', new apigw.LambdaIntegration(postReviewLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
 
     // Rulings

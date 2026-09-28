@@ -360,3 +360,52 @@ and now agree with unanimous panels by construction - consider skipping them
 when spread = 0 (cost, not correctness); case seeds must be DELIBERATING
 before start-execution now that the ledger guard is strict (the bench README
 runbook should say so); ruling.md is never published.
+
+## Phase 17 — Human review API: real ledger chain, reviewer note, published human ruling
+
+**What was broken (`postReview` in services/api/reviews.ts):** RESOLVE was
+written with fabricated `seq: 10, prevHash: 'MOCK_PREV'` (RELEASE chained off
+it), so human settlements were never part of the real hash chain and
+`/rulings/{id}/verify` could not recompute them; the reviewer's note sent by
+the /reviews UI was ignored; no Rulings row and no published ruling body, so
+human-reviewed cases were invisible in the gallery and the public ruling page
+404'd.
+
+**What changed:**
+1. Ledger chaining mirrors settle.ts: read the case's ledger head (max seq),
+   chain RESOLVE at head+1 with prevHash = head entryHash, RELEASE after it.
+   An empty ledger starts at the 64-zero genesis the verify path accepts.
+2. The note is now required (1–1000 chars, mirroring the UI's
+   MAX_NOTE_LENGTH) and becomes the published ruling's `reasoning`. Reviewer
+   provenance is the opaque Cognito sub — no names on a public page.
+3. After the ledger transaction commits, the human ruling is published like
+   an AI ruling: `ruling.json` (`humanReviewed: true`, note as reasoning,
+   `confidence: 1`, RELEASE entryHash) to the rulings bucket plus a Rulings
+   row (rulingSha256, note, reviewerSub, published flag). A publish failure
+   after settlement degrades to `published: false` + console.error — the
+   escrow move is never rolled back and the double-settle guard is unchanged.
+4. ApiStack: PostReviewHandler additionally granted Rulings table write,
+   rulings bucket write and the KMS key (SSE-KMS PutObject).
+
+**Verification:** services/api 28 tests (10 reviews), full suite 463 green;
+eslint + tsc + cdk synth clean; PanchApiStack deployed (endpoint unchanged).
+Live E2E (`scripts/tmp-validation/review-e2e.mjs`; seeded ESCALATED case with
+real FUND/DISPUTE ledger entries + Cognito token): POST /reviews → 200 SETTLED
+with entryHash; ledger 1:FUND, 2:DISPUTE, 3:RESOLVE, 4:RELEASE chainValid
+true; Rulings row humanReviewed/hasNote/hasSha/published/reviewerSub all true;
+CloudFront 200 with shaMatch true; `/rulings/{id}/verify` → match true
+("recomputes clean from genesis"); second review rejected; public ruling page
+renders the human ruling logged out.
+
+**Flagged, not attributed:** mid-session, one verified E2E case's artifacts
+(case row, rulings row, S3 object) were deleted externally while another
+actor was deploying to the same account (CFN shows PanchApiStack updates at
+14:01/14:52/14:58Z this session and a Workflow update at 14:00Z, plus a
+foreign `hr-e2e-*` case this session's code did not create). No CloudTrail
+trail exists to attribute the deletions. Worth a team conversation about
+concurrent deploys to the shared dev account.
+
+**Assumptions:** human rulings publish `findingsOfFact: []` and
+`clausesRelied: []` — the note is the reasoning, nothing is fabricated;
+`confidence: 1` because a human determination is final and the public ruling
+contract (web/lib/ruling.ts) requires numeric confidence.
