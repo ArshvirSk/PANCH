@@ -1,0 +1,12 @@
+{
+  "caseId": "case-a",
+  "label": "clear win for the claimant (non-payment after confirmed delivery)",
+  "goldPayeeShareBps": 10000,
+  "goldRationale": "Clause 4.1 permits withholding only for non-conformity plus failed cure after written notice; the record shows confirmed receipt, a cosmetic-only tweak request explicitly framed as 'no formal notice', an admission the non-payment 'is not about the work', and 45 days of silence. Clause 4.2 therefore makes the full contracted amount due.",
+  "setBeforeAnyPanelRun": true,
+  "meaningfulDivergence": {
+    "description": "What would count as a finding rather than a goalpost move",
+    "rule": "A settled award below 8000 bps, or an escalation caused by a judge awarding below 5000 bps against one-sided claimant-favouring facts, is a meaningful divergence: report it as possible model variance (per the Phase 10/11 Nova-variance precedent) or a pipeline bug. Do NOT edit gold.json to match the panel."
+  },
+  "notes": "Contract text is verbatim services/api/demo.ts DEMO_CONTRACT_TEXT (checked before writing anything new). Combined into a single e-1 artifact because the real intake handler emits exactly one contract evidence item per case."
+}

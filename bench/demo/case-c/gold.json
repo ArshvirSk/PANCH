@@ -1,0 +1,14 @@
+{
+  "caseId": "case-c",
+  "label": "genuine split (partial delivery, disputed scope and a contested excuse)",
+  "goldPayeeShareBps": 5000,
+  "goldRationale": "Deliverable A (300 USD) is fully earned: 10/10 posts delivered a week early (clause 3.1 lateness reduction does not apply). Deliverable B (300 USD) is genuinely contested: 2/3 videos were three days late (a 10-point reduction under clause 3.1 lands at 270 USD, i.e. 180 of the 300-part for two thirds), video 3 was never delivered and production had not started, and clause 3.2 makes the hold the claimant's responsibility to discharge — but the claimant's stall was not baseless, since the respondent's own photo swap touched the composite and the respondent refused written confirmation. A defensible tribunal lands on the posts plus the two delivered videos with the late penalty: (300 + 180) / 600 = 4800 bps, with genuine room for a panel to value the undisputed posts higher and land near 5000.",
+  "goldPayeeShareBpsComputation": "(300 * 1.00 + 300 * (2/3) * 0.90) / 600 = 0.48 exactly; rounded to the nearest defensible round figure 5000 given the contested-hold mitigation",
+  "acceptableBandBps": [4000, 6000],
+  "setBeforeAnyPanelRun": true,
+  "meaningfulDivergence": {
+    "description": "What would count as a finding rather than a goalpost move",
+    "rule": "A settled award outside 4000-6000 bps is a meaningful divergence to report (possible ambiguity in the fixture, or a pipeline bug). Escalation to human review is NOT a divergence here by design: this case is the escalation-path demo, and a spread above the 3000 bps threshold on a genuinely split panel is the correct routing. Do NOT edit gold.json to match the panel."
+  },
+  "notes": "This is deliberately the escalation-path demo: a reasonable panel can weigh the contested hold either way, so divergent awards are expected and correct. The gold label is the defensible anchor if the panel agrees; the review queue (Phase 13/14) is the designed home for the human decision if it does not."
+}

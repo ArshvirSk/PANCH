@@ -1,0 +1,50 @@
+CASE FILE — COMBINED EVIDENCE (tribunal intake package)
+
+=== ARTIFACT 1: CONTRACT (evidence type: contract) ===
+CONTRACT FOR LAUNCH CONTENT PACK
+
+Parties: The Claimant (freelance content creator) and the Respondent (consumer-goods brand).
+
+1. Scope of work: The Claimant agrees to produce a launch content pack for the Respondent's product launch: (deliverable A) ten written social media posts, and (deliverable B) three short promotional videos not exceeding 60 seconds each.
+2. Payment terms:
+   Clause 2.1: The Respondent shall pay the Claimant 600 USD in two parts: 300 USD within 7 days of delivery of deliverable A, and 300 USD within 7 days of delivery of deliverable B in full.
+   Clause 2.2: The Claimant is responsible for obtaining and finalizing all source assets needed for deliverable B. The Respondent shall make reasonable efforts to provide requested product photography, and the parties shall confirm a final shot list in writing before video production begins.
+   Clause 2.3: Deliverable A is due 14 April 2026; deliverable B is due 15 April 2026; the Respondent's launch date is 1 May 2026.
+3. Schedule and remedy:
+   Clause 3.1: For each week or part-week that any deliverable is late, the Claimant's fee for that deliverable is reduced by 10 percentage points, unless the delay was caused by the Respondent.
+   Clause 3.2: A deliverable held back pending a condition the Claimant was obliged to pursue (such as the written confirmations in clause 2.2) remains the Claimant's responsibility to deliver; a hold is not a contractual excuse for non-delivery unless the Respondent caused it.
+4. Dispute resolution: Any dispute is resolved by a neutral tribunal applying this contract as written.
+
+Facts on the record: The Claimant delivered all ten written posts on 7 April 2026, one week early. Two of the three videos were delivered on 18 April 2026, three days late. The third video was never delivered and production had not started at filing. The Claimant states the Respondent kept changing the product photos and never confirmed the final shot list despite two written requests; the Respondent states the final photos were delivered on 2 April and no shot-list confirmation was ever requested in writing. The Respondent ran the launch using the ten posts and two videos.
+
+=== ARTIFACT 2: CHAT LOG (evidence type: chat) ===
+CHAT LOG — project channel "Launch Content"
+Participants: Respondent (brand side), Claimant (creator side).
+
+[2026-03-24 11:05] Respondent: shot list draft attached, mark up whatever is missing
+[2026-03-26 09:31] Claimant: I need the final product photos before I can lock the shot list
+[2026-04-02 16:20] Respondent: final photos are in the shared drive now — treat these as final
+[2026-04-07 10:14] Claimant: all ten posts delivered, a week early. sending the video plan next.
+[2026-04-09 13:02] Respondent: small thing — swapped the hero photo for the revised pack shot, use this one
+[2026-04-11 09:47] Claimant: that changes the composite for video 1. I need you to confirm in writing that photos are now final so I can start production.
+[2026-04-12 17:26] Respondent: photos were final on 2 April, one swap does not reopen the whole set. Please just start.
+[2026-04-12 19:03] Claimant: requesting written confirmation of the final shot list again — video 2 and 3 depend on it
+[2026-04-15 23:59] (no shot-list confirmation sent by either side)
+[2026-04-18 12:31] Claimant: delivering videos 1 and 2 now. Video 3 stays on hold until the shot list is confirmed.
+[2026-04-18 12:40] Respondent: videos are three days late. And I needed all three for the launch plan.
+[2026-04-25 08:15] Respondent: we launched with two videos and cut the third promo slot. This cost us real reach.
+[2026-04-26 10:22] Claimant: I delivered everything that was producible. The hold was on your side. Invoicing the full 600.
+[2026-04-26 10:40] Respondent: you are invoicing full price for two thirds of the videos and no confirmation process was ever followed. Paying nothing until this is resolved.
+[2026-05-02 09:12] Claimant: filing with the tribunal for the full invoice amount.
+
+=== ARTIFACT 3: INVOICE (evidence type: invoice) ===
+INVOICE INV-2026-207
+From: The Claimant (freelance content creator)
+To: The Respondent (consumer-goods brand)
+
+Description: Launch content pack — 10 written posts, 3 promotional videos
+Issued: 26 April 2026
+Amount claimed: 600 USD (full engagement fee)
+Delivered per claimant: 10/10 posts (7 April, early), 2/3 videos (18 April)
+Not delivered per claimant: video 3 — on hold pending written shot-list confirmation and final photos
+Status as of filing: UNPAID — disputed; Respondent asserts incompleteness, lateness, and that the confirmation process in clause 2.2 was never followed

@@ -1,0 +1,15 @@
+CHAT LOG — project channel "Landing Page Project"
+Participants: Respondent (client side), Claimant (designer side).
+
+[2026-03-03 14:12] Respondent: just opened the files, this looks great
+[2026-03-03 14:13] Respondent: confirming receipt of the landing page
+[2026-03-03 14:20] Claimant: thanks! sending over the invoice today
+[2026-03-03 14:22] Respondent: one small thing, can the headline button be slightly larger? totally cosmetic
+[2026-03-03 14:24] Claimant: sure, pushing that tweak now, it does not change anything else
+[2026-03-03 14:26] Respondent: no rush and no formal notice needed from my side, the page is what we agreed
+[2026-03-03 14:27] Respondent: I will release payment this week
+[2026-03-10 09:41] Claimant: friendly reminder, invoice INV-2026-031 was due today
+[2026-03-10 09:44] Respondent: sorry, payroll week, next week for sure
+[2026-03-24 16:03] Claimant: the 7-day payment window closed on 10 March and I still have not been paid
+[2026-03-24 16:05] Respondent: I know, I have just been busy. it is not about the work
+[2026-04-17 11:30] Claimant: 45 days since confirmed delivery, no payment. filing this with the tribunal.

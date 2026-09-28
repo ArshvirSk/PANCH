@@ -1,0 +1,12 @@
+{
+  "caseId": "case-b",
+  "label": "clear win for the respondent (no delivery; claimant invoices sketches as a full fee)",
+  "goldPayeeShareBps": 0,
+  "goldRationale": "Clause 2.1 conditions payment on BOTH final deliverables being delivered and receipt confirmed in writing; clause 2.2 states sketches and mood boards do not constitute delivery; clause 2.3 states no fee is owed if the engagement ends without both deliverables. The record shows one mood board sent, repeated requests for final files, and the claimant's own invoice conceding a 'substantially complete' basis. Payment of anything to the claimant would rewrite the contract.",
+  "setBeforeAnyPanelRun": true,
+  "meaningfulDivergence": {
+    "description": "What would count as a finding rather than a goalpost move",
+    "rule": "A settled award above 2000 bps is a meaningful divergence: report it as possible model variance or a pipeline bug. Do NOT edit gold.json to match the panel."
+  },
+  "notes": "The record is deliberately not 10000/0 for the respondent: the claimant performed real direction work, so a tiny good-faith award is conceivable; the contract forecloses it (clause 2.3), which is what makes this a clarity test of citation discipline — the right ruling quotes 2.1/2.2/2.3 against the record."
+}

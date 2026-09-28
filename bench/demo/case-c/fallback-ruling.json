@@ -1,0 +1,16 @@
+{
+  "caseId": "REPLACED_AT_SEED_TIME",
+  "payeeShareBps": 0,
+  "spreadBps": 0,
+  "swapConsistent": false,
+  "findingsOfFact": [],
+  "clausesRelied": [],
+  "reasoning": "The live tribunal could not complete deliberation for this demo case, so no award was reached and escrow is unaffected: no RESOLVE or RELEASE was recorded. Cached reference expectation for this benchmark case (not an award): a genuine split — the undisputed written posts plus the two delivered videos with the clause 3.1 lateness reduction land near 4800–5000 bps; divergent awards here are expected and belong in the human review queue.",
+  "confidence": 0,
+  "uncertainties": [
+    "Tribunal failure — no ruling was reached",
+    "Reference expectation only; see bench/demo/case-c/gold.json"
+  ],
+  "fallback": true,
+  "publishedAt": "2026-09-28T00:00:00.000Z"
+}
