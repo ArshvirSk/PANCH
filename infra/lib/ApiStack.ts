@@ -162,9 +162,30 @@ export class ApiStack extends cdk.Stack {
       handler: 'getReviews',
       entry: path.join(__dirname, '../../services/api/reviews.ts'),
       tracing: lambda.Tracing.ACTIVE,
-      environment: { CASES_TABLE: props.dataStack.casesTable.tableName }
+      environment: {
+        CASES_TABLE: props.dataStack.casesTable.tableName,
+        // Legacy escalated rows (pre-panel-record) recover their panel from
+        // the case's execution history.
+        STATE_MACHINE_ARN: props.workflowStack.stateMachine.stateMachineArn,
+      }
     });
     props.dataStack.casesTable.grantReadData(getReviewsLambda);
+    // Panel-record recovery reads execution history (read-only).
+    // GetExecutionHistory authorizes against the EXECUTION ARN, not the state
+    // machine ARN, so the machine ARN alone silently denies every call
+    // (AccessDenied, swallowed by the recovery catch). Same shape as the
+    // GET /cases/{id} grant above.
+    getReviewsLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['states:GetExecutionHistory'],
+      resources: [
+        cdk.Arn.format({
+          service: 'states',
+          resource: 'execution',
+          resourceName: `${cdk.Fn.select(6, cdk.Fn.split(':', props.workflowStack.stateMachine.stateMachineArn))}:*`,
+          arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+        }, this),
+      ],
+    }));
     reviews.addMethod('GET', new apigw.LambdaIntegration(getReviewsLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
 
     const postReviewLambda = new nodejs.NodejsFunction(this, 'PostReviewHandler', {
@@ -220,7 +241,16 @@ export class ApiStack extends cdk.Stack {
       handler: 'verifyRuling',
       entry: path.join(__dirname, '../../services/api/rulings.ts'),
       tracing: lambda.Tracing.ACTIVE,
+      environment: {
+        RULINGS_TABLE: props.dataStack.rulingsTable.tableName,
+        LEDGER_TABLE: props.dataStack.ledgerTable.tableName,
+        RULINGS_DOMAIN: props.dataStack.rulingsDistribution.distributionDomainName,
+      }
     });
+    // Verify reads the Rulings metadata + the case's ledger entries; it is
+    // strictly read-only.
+    props.dataStack.rulingsTable.grantReadData(verifyRulingLambda);
+    props.dataStack.ledgerTable.grantReadData(verifyRulingLambda);
     rulingId.addResource('verify').addMethod('GET', new apigw.LambdaIntegration(verifyRulingLambda));
 
     // Demo

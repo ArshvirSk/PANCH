@@ -73,6 +73,9 @@ export interface AggregateOutput {
   // still receive the panel outputs and the blinded case file pointer.
   blindedCaseFileS3Key?: string;
   finalPanelOutputs?: Record<string, JudgeOutput>;
+  // Per-judge swap-test results (from PrepareAggregate's swapOutputs map),
+  // forwarded for the escalation queue's full panel record (TRD section 8.7).
+  swapOutputs?: Record<string, JudgeOutput>;
   // Real per-model token totals for the case (PRD cost logging).
   usage?: CaseUsage;
   // USD cost computed from the SSM price table (/panch/pricing/bedrock/*).

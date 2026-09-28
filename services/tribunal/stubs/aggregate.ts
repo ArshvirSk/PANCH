@@ -41,9 +41,7 @@ export const handler = async (event: AggregateInput): Promise<AggregateOutput> =
     emitMetric('BedrockTokens', st?.usage?.totalTokens ?? 0, 'Count', { Stage: 'SWAP_TEST', Model: st?.modelId ?? 'unknown', CaseId: event.caseId, Judge: judge });
   }
   emitMetric('BedrockTokens', usage.totalTokens, 'Count', { Stage: 'AGGREGATE', Model: 'all', CaseId: event.caseId, Judge: 'panel' });
-  const costUsd = await computeCaseCostUsd(usage);
-
-  return {
+  const costUsd = await computeCaseCostUsd(usage);  return {
     caseId: event.caseId,
     medianPayeeShareBps,
     spreadBps,
@@ -54,10 +52,14 @@ export const handler = async (event: AggregateInput): Promise<AggregateOutput> =
     // the payloadResponseOnly AGGREGATE task.
     blindedCaseFileS3Key: event.blindedCaseFileS3Key,
     finalPanelOutputs: event.finalPanelOutputs,
-  // Real per-model token totals and the SSM-priced USD cost for the case.
-  // costUsd is null (never undefined) when unpriced: the value must exist in
-  // the state JSON for '$.costUsd' to resolve in the PRESIDING merge.
-  usage,
-  costUsd: costUsd ?? null,
+    // Per-judge swap-test results (TRD section 8.7: the escalation queue gets
+    // the full panel record, swap runs included). The swap awards are also
+    // what the review UI maps back (10000 - award) per judge.
+    swapOutputs: event.swapOutputs,
+    // Real per-model token totals and the SSM-priced USD cost for the case.
+    // costUsd is null (never undefined) when unpriced: the value must exist in
+    // the state JSON for '$.costUsd' to resolve in the PRESIDING merge.
+    usage,
+    costUsd: costUsd ?? null,
   };
 };

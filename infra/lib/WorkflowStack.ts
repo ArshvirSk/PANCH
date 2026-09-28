@@ -303,6 +303,8 @@ export class WorkflowStack extends cdk.Stack {
         'escalated.$': '$.presidingResult.escalated',
         'blindedCaseFileS3Key.$': '$.presidingResult.blindedCaseFileS3Key',
         'finalPanelOutputs.$': '$.presidingResult.finalPanelOutputs',
+        // Per-judge swap results, kept for PUBLISH's panel metadata.
+        'swapOutputs.$': '$.swapOutputs',
         'usage.$': '$.usage',
         'costUsd.$': '$.costUsd',
       },

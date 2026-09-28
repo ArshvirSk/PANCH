@@ -1,6 +1,7 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import * as crypto from 'crypto';
 import { PublishInput, PublishOutput } from '../../shared/step-functions';
 import { JudgeOutput } from '../../shared/schemas';
 import { emitMetric } from '../../shared/metrics';
@@ -43,10 +44,16 @@ export const handler = async (event: PublishInput): Promise<PublishOutput> => {
     publishedAt: new Date().toISOString(),
   };
 
+  // Hash the exact bytes that go to S3: GET /rulings/{id}/verify recomputes
+  // this SHA-256 over the served ruling and compares it to the stored value
+  // (TRD section 4: recompute hash, compare to stored).
+  const rulingBody = JSON.stringify(body, null, 2);
+  const rulingSha256 = crypto.createHash('sha256').update(rulingBody).digest('hex');
+
   await s3.send(new PutObjectCommand({
     Bucket: BUCKET,
     Key: `panch-rulings/${event.caseId}/ruling.json`,
-    Body: JSON.stringify(body, null, 2),
+    Body: rulingBody,
     ContentType: 'application/json',
   }));
 
@@ -72,6 +79,7 @@ export const handler = async (event: PublishInput): Promise<PublishOutput> => {
           costUsd: event.costUsd,
           usageSource: 'bedrock-converse',
           publishedAt: body.publishedAt,
+          rulingSha256,
         },
         // Republishing (retry after a transient failure, or a FAILED ->
         // resubmit run reaching PUBLISH again) must not clobber the original
