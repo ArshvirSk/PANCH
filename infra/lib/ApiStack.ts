@@ -136,9 +136,14 @@ export class ApiStack extends cdk.Stack {
       handler: 'evidenceUrl',
       entry: path.join(__dirname, '../../services/api/cases.ts'),
       tracing: lambda.Tracing.ACTIVE,
-      environment: { EVIDENCE_BUCKET: props.dataStack.evidenceBucket.bucketName }
+      environment: {
+        EVIDENCE_BUCKET: props.dataStack.evidenceBucket.bucketName,
+        // Deadline gate: evidenceUrl reads the case row to check evidenceDeadline.
+        CASES_TABLE: props.dataStack.casesTable.tableName,
+      }
     });
     props.dataStack.evidenceBucket.grantPut(evidenceLambda);
+    props.dataStack.casesTable.grantReadData(evidenceLambda);
     caseId.addResource('evidence').addMethod('POST', new apigw.LambdaIntegration(evidenceLambda), { authorizer, authorizationType: apigw.AuthorizationType.COGNITO });
     
     const submitLambda = new nodejs.NodejsFunction(this, 'SubmitHandler', {

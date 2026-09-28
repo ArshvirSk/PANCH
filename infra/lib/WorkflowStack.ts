@@ -8,6 +8,8 @@ import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as path from 'path';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as fs from 'fs';
 
 import { DataStack } from './DataStack';
@@ -177,6 +179,23 @@ export class WorkflowStack extends cdk.Stack {
     // FAILLambda marks the case FAILED (UpdateItem on Cases) and copies the
     // cached fallback ruling for demo cases.
     props.dataStack.casesTable.grant(failLambda, 'dynamodb:UpdateItem');
+
+    // Response-overdue sweep (TRD: EventBridge owns case-lifecycle timers).
+    // Hourly scan of FUNDED/DISPUTED cases past their evidenceDeadline: flags
+    // rows responseOverdue and emits OverdueCases for the dashboard alarm.
+    // Deliberately does NOT adjudicate or settle overdue cases — auto-rules
+    // for party silence are a product decision, not a cron default. The
+    // evidence gate itself is enforced at the API (evidenceUrl 403s after the
+    // deadline); this sweep is the overdue visibility half.
+    const responseOverdueLambda = createLambda('ResponseOverdueLambda', 'responseOverdue.ts');
+    // createLambda's grantReadData covers the Scan; the row flag write needs
+    // UpdateItem explicitly (same shape as escalate/fail above).
+    props.dataStack.casesTable.grant(responseOverdueLambda, 'dynamodb:UpdateItem');
+    new events.Rule(this, 'ResponseOverdueSchedule', {
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      targets: [new targets.LambdaFunction(responseOverdueLambda)],
+      description: 'Hourly sweep: flag FUNDED/DISPUTED cases past their evidenceDeadline as responseOverdue',
+    });
 
     // State Machine Tasks
     const intakeTask = new tasks.LambdaInvoke(this, 'INTAKE', { lambdaFunction: intakeLambda, payloadResponseOnly: true });

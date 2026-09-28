@@ -1,6 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import { evidenceUrl } from './cases';
 
+// evidenceUrl now reads the case (deadline gate) before presigning.
+const sendMock = vi.hoisted(() => vi.fn());
+vi.mock('@aws-sdk/lib-dynamodb', () => ({
+  DynamoDBDocumentClient: { from: vi.fn(() => ({ send: sendMock })) },
+  GetCommand: class { constructor(public input: any) {} },
+  PutCommand: class { constructor(public input: any) {} },
+  UpdateCommand: class { constructor(public input: any) {} },
+}));
+vi.mock('@aws-sdk/client-dynamodb', () => ({ DynamoDBClient: vi.fn() }));
+
 // Mock dependencies
 vi.mock('@aws-sdk/client-s3', () => {
   return {
@@ -19,6 +29,8 @@ vi.mock('@aws-sdk/s3-request-presigner', () => {
 
 describe('Evidence API', () => {
   it('generates presigned URL with correct content type constraints', async () => {
+    // No deadline on this case: the evidence window stays open.
+    sendMock.mockResolvedValueOnce({ Item: { caseId: 'c-123', status: 'FUNDED' } });
     const event = {
       pathParameters: { id: 'c-123' },
       body: JSON.stringify({ contentType: 'application/pdf', contentLength: 1024 }),

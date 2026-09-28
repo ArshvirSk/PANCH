@@ -28,7 +28,20 @@ export const create = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     const body = JSON.parse(event.body || '{}');
     const caseId = `c-${uuidv4().substring(0, 8)}`;
     const claimantId = event.requestContext.authorizer?.claims?.sub || 'test-user';
-    const item = { caseId, status: CaseStatus.CREATED, claimantId, respondentId: body.respondentEmail || 'pending', amountCents: body.amountCents || 0, currency: body.currency || 'USD', createdAt: new Date().toISOString() };
+    const item: Record<string, unknown> = { caseId, status: CaseStatus.CREATED, claimantId, respondentId: body.respondentEmail || 'pending', amountCents: body.amountCents || 0, currency: body.currency || 'USD', createdAt: new Date().toISOString() };
+    // PRD F1: a deal carries a deadline. Optional, but when present it must be
+    // a valid ISO-8601 timestamp in the future — it gates the evidence window
+    // (evidenceUrl) and drives the response-overdue sweep.
+    if (body.evidenceDeadline !== undefined && body.evidenceDeadline !== null) {
+      const deadline = new Date(body.evidenceDeadline);
+      if (isNaN(deadline.getTime())) {
+        return respond(400, { error: 'evidenceDeadline must be an ISO 8601 date-time' });
+      }
+      if (deadline.getTime() <= Date.now()) {
+        return respond(400, { error: 'evidenceDeadline must be in the future' });
+      }
+      item.evidenceDeadline = deadline.toISOString();
+    }
     await docClient.send(new PutCommand({ TableName: CASES_TABLE, Item: item }));
     return respond(201, item);
   } catch (err: any) { return respond(500, { error: err.message }); }
@@ -59,6 +72,15 @@ export const dispute = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 export const evidenceUrl = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const caseId = event.pathParameters?.id!;
+    // Evidence window (PRD F1/F3): once evidenceDeadline has passed, no new
+    // evidence can enter the case — the respondent's counter-evidence link
+    // expires with it. Cases without a deadline keep the old open window.
+    const caseRes = await docClient.send(new GetCommand({ TableName: CASES_TABLE, Key: { caseId } }));
+    if (!caseRes.Item) return respond(404, { error: 'Not found' });
+    const deadline = caseRes.Item.evidenceDeadline;
+    if (typeof deadline === 'string' && Date.now() > new Date(deadline).getTime()) {
+      return respond(403, { error: 'Evidence window closed: the evidenceDeadline for this case has passed' });
+    }
     const body = JSON.parse(event.body || '{}');
     const evidenceId = `ev-${uuidv4().substring(0, 8)}`;
     const key = `${caseId}/${evidenceId}`;

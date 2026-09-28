@@ -409,3 +409,39 @@ concurrent deploys to the shared dev account.
 `clausesRelied: []` — the note is the reasoning, nothing is fabricated;
 `confidence: 1` because a human determination is final and the public ruling
 contract (web/lib/ruling.ts) requires numeric confidence.
+
+## Phase 18 — evidenceDeadline enforcement (the last open "immediate fix")
+
+**What was missing:** `evidenceDeadline` was a stored-only field (PRD F1 lets
+a deal carry a deadline; nothing honored it). No validation on create, no gate
+on the evidence window, no overdue visibility.
+
+**What changed (smallest honest enforcement, no invented policy):**
+1. `POST /cases` (services/api/cases.ts create): `evidenceDeadline` is
+   optional but when present must parse as ISO 8601 and be in the future
+   (400 otherwise); stored normalized to ISO.
+2. `POST /cases/{id}/evidence` (evidenceUrl): reads the case and returns
+   403 "Evidence window closed" once the deadline has passed — the
+   respondent's counter-evidence link (F3) expires with it. Cases without a
+   deadline keep the open window. ApiStack: EvidenceUrlHandler gained
+   CASES_TABLE env + read grant (its first DynamoDB use; caught live as a
+   500 on the first E2E attempt, fixed before commit).
+3. Hourly EventBridge sweep (PanchWorkflowStack): ResponseOverdueLambda scans
+   FUNDED/DISPUTED cases past their deadline, sets `responseOverdue` +
+   `overdueSince` with a conditional Update (a mid-sweep status change wins),
+   and emits OverdueCases EMF metrics (per-case + sweep total) for the
+   dashboard. Deliberately does NOT adjudicate, settle or fail overdue cases:
+   auto-rules for party silence are a product decision, not a cron default.
+   Deadline blocking of uploads is enforced at the API; the sweep is the
+   overdue-visibility half.
+
+**Verification:** 475 tests green (36 api incl. 8 new deadline tests, 17
+tribunal incl. 4 sweeper tests); eslint, tsc, cdk synth clean. Deployed
+PanchWorkflowStack + PanchApiStack (281 s). Live E2E
+(scripts/tmp-validation/deadline-e2e.mjs): seeded DISPUTED case with deadline
+2 min in the past -> manual sweeper invoke {scanned:2, flagged:1}, row gained
+responseOverdue/overdueSince; evidence upload after deadline -> 403 window
+closed; create with past deadline -> 400; future deadline -> 201 stored ISO.
+Regression: create with future deadline then upload -> 200 presigned URL.
+Rule live: rate(1 hour), ENABLED. Ship gates unchanged (landing 200, /reviews
+200, demo ruling 200, reviews API 401-guard).
