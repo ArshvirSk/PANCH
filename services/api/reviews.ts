@@ -1,13 +1,63 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { SFNClient, GetExecutionHistoryCommand } from '@aws-sdk/client-sfn';
 import { docClient, appendLedgerEntry, CaseStatus, LedgerEvent } from '../shared';
 import { emitMetric } from '../shared/metrics';
 
 const CASES_TABLE = process.env.CASES_TABLE || '';
 
+const sfn = new SFNClient({});
+
 function respond(statusCode: number, body: any): APIGatewayProxyResult {
   return { statusCode, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body) };
+}
+
+interface PanelRecord {
+  judges?: Record<string, unknown>;
+  swapOutputs?: Record<string, unknown>;
+  aggregate?: { medianPayeeShareBps?: number; spreadBps?: number; swapConsistent?: boolean };
+  escalationReason?: string;
+  escalatedAt?: string;
+  recoveredFromHistory?: boolean;
+}
+
+/**
+ * Legacy rows escalated before the panel record was persisted (PR #11 era):
+ * recover judges + aggregate from the case's Step Functions execution
+ * history. Read-only; if the execution ARN is gone or the history is
+ * truncated, the case still lists — with empty panel data and no lie.
+ */
+async function recoverPanelRecord(executionArn?: string): Promise<PanelRecord | undefined> {
+  if (!executionArn || !executionArn.startsWith('arn:aws:states:')) return undefined;
+  try {
+    const hist = await sfn.send(new GetExecutionHistoryCommand({ executionArn, maxResults: 200 }));
+    let record: PanelRecord = {};
+    for (const ev of hist.events || []) {
+      const exited = ev.stateExitedEventDetails;
+      if (!exited) continue;
+      let out: any;
+      try { out = JSON.parse(exited.output || 'null'); } catch { continue; }
+      if (!out) continue;
+      if (exited.name === 'AGGREGATE') {
+        record.judges = out.finalPanelOutputs ?? record.judges;
+        record.swapOutputs = out.swapOutputs ?? record.swapOutputs;
+        record.aggregate = {
+          medianPayeeShareBps: out.medianPayeeShareBps,
+          spreadBps: out.spreadBps,
+          swapConsistent: out.swapConsistent,
+        };
+        record.escalationReason = out.escalationReason;
+      }
+    }
+    if (record.judges && Object.keys(record.judges).length > 0) {
+      record.recoveredFromHistory = true;
+      return record;
+    }
+  } catch (err: any) {
+    console.error('Panel-record recovery failed for', executionArn, err?.message);
+  }
+  return undefined;
 }
 
 export const getReviews = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -21,10 +71,40 @@ export const getReviews = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       ExpressionAttributeNames: { '#st': 'status' },
       ExpressionAttributeValues: { ':s': CaseStatus.ESCALATED }
     }));
-    // Returning dummy panel outputs since we don't have Rulings table query ready
-    const items = (res.Items || []).map(item => ({
-      ...item,
-      panelOutputs: { spreadBps: 5000, judges: [] }
+
+    const items = await Promise.all((res.Items || []).map(async (item) => {
+      // Full panel record (TRD section 8.7): the ESCALATE task persists the
+      // judges' outputs, per-judge swap runs, aggregate and reason on the row.
+      // Older escalated rows predate the record — recover what the execution
+      // history still holds rather than serving placeholder data.
+      let panel = item.panelRecord as PanelRecord | undefined;
+      if (!panel || !panel.judges || Object.keys(panel.judges).length === 0) {
+        const recovered = await recoverPanelRecord(item.executionArn);
+        if (recovered) {
+          panel = { ...recovered, ...panel };
+          // Backfill so the row heals itself for the next poll.
+          try {
+            await docClient.send(new UpdateCommand({
+              TableName: CASES_TABLE,
+              Key: { caseId: item.caseId },
+              UpdateExpression: 'SET panelRecord = :p',
+              ExpressionAttributeValues: { ':p': panel },
+            }));
+          } catch { /* best-effort backfill; the response is already correct */ }
+        }
+      }
+      const { panelRecord, executionArn, ...publicCase } = item as Record<string, any>;
+      return {
+        ...publicCase,
+        panelOutputs: {
+          judges: panel?.judges ?? {},
+          swapOutputs: panel?.swapOutputs ?? {},
+          aggregate: panel?.aggregate ?? {},
+          escalationReason: panel?.escalationReason,
+          escalatedAt: panel?.escalatedAt,
+          ...(panel?.recoveredFromHistory ? { recoveredFromHistory: true } : {}),
+        },
+      };
     }));
     return respond(200, items);
   } catch (err: any) { return respond(500, { error: err.message }); }
