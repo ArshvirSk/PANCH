@@ -4,6 +4,8 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as trail from 'aws-cdk-lib/aws-cloudtrail';
 
 export interface ObsStackProps extends cdk.StackProps {
   /** Full ARN of the tribunal state machine (AWS/States dimension is the ARN). */
@@ -12,6 +14,8 @@ export interface ObsStackProps extends cdk.StackProps {
   apiName: string;
   /** CloudFront distribution id for the rulings path (Requests metric). */
   distributionId: string;
+  /** Project data buckets audited at the object level by the CloudTrail trail. */
+  dataBuckets: s3.Bucket[];
 }
 
 // Prices are USD per 1,000 tokens from the AWS Bedrock price list. They live
@@ -230,6 +234,35 @@ export class ObsStack extends cdk.Stack {
       1,
       'Bedrock throttled at least one judge invocation in 5 minutes',
     );
+
+    // --- CloudTrail: who did what, when ---
+    // Phase 17 lesson: an S3 ruling object was deleted mid-session while more
+    // than one person worked against the shared dev account, and the deletion
+    // could not be attributed because the account had no trail. This trail
+    // records every management event plus S3 data events on the project
+    // buckets (object-level Get/Put/Delete), so the next anomaly has an
+    // answer to "who and when" in CloudTrail event history.
+    const auditBucket = new s3.Bucket(this, 'CloudTrailBucket', {
+      encryption: s3.BucketEncryption.KMS_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      lifecycleRules: [{ expiration: cdk.Duration.days(90) }],
+      // Trail log files must never be altered after the fact.
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+    });
+    const panchTrail = new trail.Trail(this, 'PanchAuditTrail', {
+      bucket: auditBucket,
+      isMultiRegionTrail: false,
+      includeGlobalServiceEvents: true,
+      managementEvents: trail.ReadWriteType.ALL,
+    });
+    // Object-level Get/Put/Delete on the project's own data buckets: the next
+    // deleted ruling or evidence object has an attribution.
+    panchTrail.addS3EventSelector([
+      { bucket: auditBucket },
+      ...props.dataBuckets.map((b) => ({ bucket: b })),
+    ]);
 
     new cdk.CfnOutput(this, 'AlarmTopicArn', { value: this.alarmTopic.topicArn });
     new cdk.CfnOutput(this, 'DashboardName', { value: dashboard.dashboardName });

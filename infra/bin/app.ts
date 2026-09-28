@@ -31,4 +31,5 @@ const obsStack = new ObsStack(app, 'PanchObsStack', {
   stateMachineArn: workflowStack.stateMachine.stateMachineArn,
   apiName: apiStack.api.restApiName,
   distributionId: dataStack.rulingsDistribution.distributionId,
+  dataBuckets: [dataStack.evidenceBucket, dataStack.rulingsBucket],
 });

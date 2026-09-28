@@ -27,6 +27,8 @@ Each directory is strictly owned by one member. No directory has two owners.
 
 **Deploy Rule:** Only **Arshvir** runs `cdk deploy`. Always deploy from `main` after merging — Day 1 is the exception, where deploying from Arshvir's branch to get the public URL live is allowed, followed immediately by a merge to `main`.
 
+**Deploy enforcement (added after Phase 17):** every deploy must go through the pre-deploy gate: `scripts/require-deploy-lock.sh <stack names...>`. It refuses to run from a dirty tree, a non-`main` branch, or a local `main` that is behind `origin/main`, and it takes an expiring SSM lock (`/panch/deploy/lock`, 30-minute TTL) so two overlapping deploys fail fast instead of racing. Rationale: Phase 17 had two concurrent deploys to the shared dev account and a verified case's artifacts deleted mid-session with no trail to attribute them. CloudTrail (PanchObsStack) now records management events plus object-level data events on the evidence/rulings buckets, and the rulings/evidence buckets are versioned with 90-day noncurrent expiry, so a future deletion is both attributable and recoverable.
+
 ---
 
 ## 2. Contracts to Freeze on Day 1

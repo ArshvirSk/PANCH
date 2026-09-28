@@ -91,6 +91,9 @@ export class DataStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
+      // Evidence is immutable input to rulings; expire noncurrent versions so
+      // demo churn does not accumulate forever (mirrors the rulings bucket).
+      lifecycleRules: [{ noncurrentVersionExpiration: cdk.Duration.days(90) }],
       // Browsers upload evidence straight to S3 with a presigned PUT URL. CORS only lets the page
       // make that request; the 5-minute presigned signature is still what authorizes it.
       cors: [{
@@ -108,6 +111,13 @@ export class DataStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, // OAC will grant CF access later
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
+      // Published rulings are the product's source of truth. Versioning makes
+      // an accidental or malicious overwrite/deletion recoverable without
+      // asking anyone to re-run a tribunal (Phase 17: a ruling.json vanished
+      // mid-session and there was no way back). Noncurrent versions expire
+      // after 90 days so demo churn does not accumulate forever.
+      versioned: true,
+      lifecycleRules: [{ noncurrentVersionExpiration: cdk.Duration.days(90) }],
     });
 
     this.benchmarkBucket = new s3.Bucket(this, 'BenchmarkBucket', {

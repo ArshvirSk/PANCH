@@ -445,3 +445,50 @@ closed; create with past deadline -> 400; future deadline -> 201 stored ISO.
 Regression: create with future deadline then upload -> 200 presigned URL.
 Rule live: rate(1 hour), ENABLED. Ship gates unchanged (landing 200, /reviews
 200, demo ruling 200, reviews API 401-guard).
+
+## Phase 19 — Concurrency hardening + ruling.md cleanup (Arshvir's remaining To-Dos)
+
+**Why:** Phase 17 flagged that two actors deployed concurrently to the shared
+dev account and a verified case's artifacts were deleted mid-session with no
+way to attribute or recover them. The audit made fixing that Arshvir's only
+open To-Do, plus the known `ruling.md` dead-weight cleanup.
+
+**1. Recoverability — S3 versioning with noncurrent expiry:**
+- RulingsBucket now `versioned: true` + 90-day noncurrentVersionExpiration.
+  Published rulings are the product's source of truth; a delete/overwrite is
+  now a recoverable shadow instead of a loss.
+- EvidenceBucket (already versioned) gained the same 90-day noncurrent rule.
+
+**2. Attribution — CloudTrail (PanchObsStack):** new trail
+`PanchObsStack-PanchAuditTrail...` logging management events (ALL) plus S3
+data events on the evidence, rulings and trail buckets, to a dedicated
+SSE-S3-KMS-managed audit bucket with 90-day expiry and log-file validation
+(Trail default). The next anomaly has a "who and when" answer. (Trail API
+note: aws-cdk-lib 2.270 uses the `addS3EventSelector` method, not a
+`TrailProps.eventSelectors` prop — TS caught it, synth confirmed.)
+
+**3. Prevention — pre-deploy coordination gate:** `scripts/require-deploy-lock.sh`
+enforces the existing TEAM_PLAN deploy rule: refuses dirty tree, non-main
+branch, or local main behind origin/main, then takes an expiring SSM lock
+(`/panch/deploy/lock`, 30-min TTL, holder ARN embedded) so overlapping
+deploys fail fast. Self-tested: correctly REFUSED with a dirty tree (exit 1).
+TEAM_PLAN.md documents the gate.
+
+**4. ruling.md dead weight removed:** dropped the unused
+`S3_KEY_BUILDERS.rulingMarkdown`, deleted the three fixture .md files
+(nothing ever wrote or served them), updated bench README.
+
+**5. bench README runbook fix (logged Phase 16 follow-up):** the seed step
+said `status: DISPUTED`, which since the Phase 16 ledger guard fails at
+SETTLE (RESOLVE requires DELIBERATING/ESCALATED). Runbook now says seed
+DELIBERATING (matching runDemo) and explains why, with the FUND/DISPUTE
+ledger-seeding note for cases that want a fuller chain.
+
+**Verification:** 475 tests green; eslint/tsc/cdk synth clean; deployed
+PanchDataStack + PanchObsStack (203 s). Live: rulings bucket versioning
+Enabled + 90d noncurrent rule; trail IsLogging true, management ALL, S3 data
+events on. **Recovery drill on a real ruling** (`hr-e2e-1790608149447`):
+deleted the object (delete marker created), restored the prior version via
+copy-object, served bytes SHA-match the stored `rulingSha256`, public
+`/rulings/{id}/verify` -> match:true, CloudFront 200 throughout the restore.
+Ship gates unchanged (landing 200, /reviews 200, demo ruling 200, API 401).

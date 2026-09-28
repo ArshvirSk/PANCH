@@ -14,7 +14,9 @@ export const SSM_PARAMETERS = {
 export const S3_KEY_BUILDERS = {
   evidenceRaw: (caseId: string, evidenceId: string) => `panch-evidence/${caseId}/${evidenceId}`,
   evidenceExtracted: (caseId: string, evidenceId: string) => `panch-evidence/${caseId}/extracted/${evidenceId}.txt`,
-  rulingMarkdown: (caseId: string) => `panch-rulings/${caseId}/ruling.md`,
+  // ruling.md was dropped (Phase 19): publish.ts and failHandler.ts never
+  // wrote it, the public page serves ruling.json only, and the fixtures
+  // carried dead .md files.
   rulingJson: (caseId: string) => `panch-rulings/${caseId}/ruling.json`,
   benchCase: (benchId: string, filename: string) => `panch-benchmark/${benchId}/${filename}`
 };

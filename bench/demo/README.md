@@ -13,7 +13,9 @@ each case carries a cached fallback ruling for the demo-day Catch path.
 | `extracted-e-1.txt` | The combined evidence text seeded to `panch-evidence/{caseId}/extracted/e-1.txt` at run time |
 | `gold.json` | Pre-declared gold `payeeShareBps`, rationale, divergence rule, escalation expectations |
 | `fallback-ruling.json` | Cached Catch-path ruling, copied byte-for-byte to `bench/demo/{caseId}/fallback-ruling.json` in S3 |
-| `ruling.md` | Human-readable mirror of the fallback |
+
+Note: the published artifact is `ruling.json` only. `ruling.md` mirrors were
+removed in Phase 19 — nothing in the pipeline ever wrote or served a `.md`.
 
 Single-artifact note: the real `intake.ts` emits exactly one contract evidence
 item (`e-1`, key `panch-evidence/{caseId}/extracted/e-1.txt`), and `blind.ts`
@@ -41,8 +43,16 @@ engages the cached fallback for `demo-*` cases.
 Per case, replicate exactly what `POST /demo/run` does (see `services/api/demo.ts`):
 
 1. Pick `caseId` (e.g. `demo-ba-<6 hex>`) and create the case row in the cases
-   table with `status: DISPUTED`, `isDemo: true`, `amountCents`:
+   table with `status: DELIBERATING`, `isDemo: true`, `amountCents`:
    A `50000`, B `40000`, C `60000` (USD).
+   **Why DELIBERATING, not DISPUTED:** `runDemo` flips the row to
+   DELIBERATING before start-execution, and since the Phase 16 ledger guard a
+   SETTLE against a DISPUTED case is an illegal transition (RESOLVE requires
+   DELIBERATING or ESCALATED) — the workflow would fail at SETTLE. Seed the
+   status the live demo path actually runs with.
+   (If you want the FUND/DISPUTE ledger entries too, write them at seq 1/2
+   with `prevHash: 'GENESIS'` and flip the row to DELIBERATING afterwards —
+   same as `review-e2e.mjs` does for human-review cases.)
 2. Put `extracted-e-1.txt` → S3 key `panch-evidence/{caseId}/extracted/e-1.txt`
    (the same bucket `intake.ts` reads; use the constants in
    `services/shared/constants.ts` — do not invent paths).
