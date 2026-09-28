@@ -1,0 +1,16 @@
+{
+  "caseId": "REPLACED_AT_SEED_TIME",
+  "payeeShareBps": 0,
+  "spreadBps": 0,
+  "swapConsistent": false,
+  "findingsOfFact": [],
+  "clausesRelied": [],
+  "reasoning": "The live tribunal could not complete deliberation for this demo case, so no award was reached and escrow is unaffected: no RESOLVE or RELEASE was recorded. Cached reference expectation for this benchmark case (not an award): a clear claimant win — non-payment after confirmed delivery, with no valid withholding notice under clauses 4.1 and 4.2 of the seeded contract.",
+  "confidence": 0,
+  "uncertainties": [
+    "Tribunal failure — no ruling was reached",
+    "Reference expectation only; see bench/demo/case-a/gold.json"
+  ],
+  "fallback": true,
+  "publishedAt": "2026-09-28T00:00:00.000Z"
+}

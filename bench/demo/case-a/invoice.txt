@@ -1,0 +1,9 @@
+INVOICE INV-2026-031
+From: The Claimant (freelance designer)
+To: The Respondent (client)
+
+Description: Landing page design and delivery, per contract section 1
+Delivery confirmed: 3 March 2026
+Amount due: 500 USD
+Payment terms: Within 7 days of confirmed delivery (contract clause 3.1) — due 10 March 2026
+Status as of filing: UNPAID (45 days past due)

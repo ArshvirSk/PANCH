@@ -1,0 +1,45 @@
+CASE FILE — COMBINED EVIDENCE (tribunal intake package)
+
+=== ARTIFACT 1: CONTRACT (evidence type: contract) ===
+CONTRACT FOR LOGO AND BRAND IDENTITY DESIGN
+
+Parties: The Claimant (freelance brand designer) and the Respondent (a small cafe owner).
+
+1. Scope of work: The Claimant agrees to design a final logo (deliverable A) and a one-page brand guide (deliverable B) for the Respondent's cafe.
+2. Payment terms:
+   Clause 2.1: The Respondent shall pay the Claimant 400 USD within 7 days of the Claimant delivering BOTH final deliverables (A and B) as production-ready files and the Respondent confirming receipt in writing.
+   Clause 2.2: The Claimant may present sketches, mood boards and drafts during the engagement, but these do not constitute delivery and do not trigger any payment obligation.
+   Clause 2.3: If the engagement ends without both final deliverables being delivered, no fee is owed to the Claimant for work performed to date.
+3. Timeline: The parties agree the final deliverables are due by 20 March 2026.
+4. Breach and remedy: A party that fails to perform its obligations under this contract is liable for the other party's reasonable direct losses caused by that failure.
+5. Dispute resolution: Any dispute is resolved by a neutral tribunal applying this contract as written.
+
+Facts on the record: As of the case filing date, the Claimant has sent one mood board with three direction sketches and no production-ready files. The Claimant states the engagement was "substantially complete" but has not delivered deliverable A or deliverable B. No receipt has been confirmed in writing because no final deliverables were sent.
+
+=== ARTIFACT 2: CHAT LOG (evidence type: chat) ===
+CHAT LOG — project channel "Cafe Branding"
+Participants: Respondent (cafe owner), Claimant (designer).
+
+[2026-03-05 10:02] Respondent: excited to see directions this week
+[2026-03-18 15:47] Claimant: sending over the mood board now — these are direction ideas, final files to follow
+[2026-03-18 15:48] Respondent: got it, when do I see the actual logo files?
+[2026-03-19 09:15] Respondent: deadline is tomorrow, right? clause 2.1 says payment only after both final deliverables, so I need them by the 20th
+[2026-03-19 12:40] Claimant: I'm confident it's substantially complete, you'll love it
+[2026-03-20 18:55] Respondent: still no files. I can't pay for a mood board.
+[2026-03-21 09:12] Claimant: sent you the invoice for the full 400 anyway
+[2026-03-21 09:30] Respondent: I have to decline. You haven't delivered the logo or the brand guide. Clause 2.3 says no fee is owed if the final deliverables never arrive.
+[2026-03-28 14:21] Claimant: the direction work took real hours, I think you should pay for it
+[2026-03-28 14:35] Respondent: I'd have paid in full for the finished work, and I still will if you deliver it. But I'm not paying for sketches.
+[2026-04-10 10:05] Claimant: filing this with the tribunal for the full invoice amount.
+
+=== ARTIFACT 3: INVOICE (evidence type: invoice) ===
+INVOICE INV-2026-118
+From: The Claimant (freelance brand designer)
+To: The Respondent (cafe owner)
+
+Description: Logo and brand identity design — full engagement fee
+Issued: 21 March 2026
+Amount claimed: 400 USD
+Payment terms claimed: Due immediately
+Basis claimed by Claimant: "Design work substantially complete"
+Status as of filing: UNPAID — disputed; Respondent states no final deliverables were received

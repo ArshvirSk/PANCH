@@ -273,3 +273,34 @@ This closes gap 2 from Phase 13 and risk 2 from the Phase 11 risk list. Both end
 **Checks run:** 452 tests green (api 5 files/20, tribunal 4/13, shared 3/10, web 11/409) — including 10 new tests: `reviews-panel.test.ts` (persisted record served with internals stripped; legacy recovery + backfill; failed recovery lists with no lie) and `rulings-verify.test.ts` (GENESIS and 64-zero origins, content tamper, ledger tamper, escalated 404, legacy no-hash honesty, unpublished 404). `tsc --noEmit` clean (root + infra), `eslint .` clean, `cdk synth PanchApiStack PanchWorkflowStack` 0 errors. `PanchWorkflowStack` and `PanchApiStack` deployed (`--require-approval never`); `/demo/run`, `/reviews/` and the API verified live after deploy. Ship-gate checks: `/reviews` without a token → 401; landing page → 200; `/reviews/` → 200.
 
 **Risk-list updates:** Phase 11 risk 2 (`verifyRuling` stub) is now resolved — verify recomputes for real and says so when it cannot. Remaining: risk 1 (Nova variance → escalations, unchanged and now fully visible in the queue), 3 (`evidenceDeadline`), 4 (guardrail choice), 5 (`xray:*`), 6 (legacy `demo-058f005e` row without a stored hash — now surfaced honestly by verify rather than hidden).
+
+## Phase 15: demo benchmark cases A/B/C — built, gold-labeled, fallbacks cached (Buffy/agent, branch `r/feat/demo-cases`, 2026-09-28)
+**Context read before building:** TRD §8/§13 (the "Workflow: integration runs on 3 demo cases" row), Phase 12 (presiding synthesis), Phases 13–14 (review queue + real verify). The Catch-path S3 location was taken from Arshvir's code, not guessed: `failHandler.ts` copies `bench/demo/{caseId}/fallback-ruling.json` to `panch-rulings/{caseId}/ruling.json` (and `demo.ts` seeds exactly that key with that field shape — `fallback: true`, zeroed award, escrow-untouched disclosure), so the cached files mirror that shape and location.
+
+**Inventory before this change:** `bench/` contained only `package.json` — `bench/demo/` did not exist; nothing was mid-flight. Built from scratch on `r/feat/demo-cases`.
+
+### Case A — `bench/demo/case-a/` (clear claimant win: non-payment after confirmed delivery)
+- Built: contract + chat log + invoice, combined into `extracted-e-1.txt`. The real `intake.ts` emits a single `e-1` contract artifact at `panch-evidence/{caseId}/extracted/e-1.txt` and `blind.ts` inlines that extracted text, so one combined artifact per case is the format the live pipeline actually consumes; no extra evidence IDs were invented (the citation gate would drop them anyway).
+- Contract text is verbatim `services/api/demo.ts` `DEMO_CONTRACT_TEXT` (demo.ts checked first per instructions; it fits Case A), so Case A doubles as the shipped public demo.
+- Gold label fixed before any panel run: `goldPayeeShareBps: 10000` — clause 4.1 allows withholding only for non-conformity plus failed cure after written notice; the record shows confirmed receipt, a cosmetic tweak explicitly framed as "no formal notice", an admission the non-payment "is not about the work", and 45 days of silence. Divergence rule pre-declared in `gold.json` (settled < 8000 bps, or an escalation driven by a sub-5000 judge award on one-sided facts, is a finding, not a goalpost move).
+- Real execution: **not run** — this session has no AWS credentials (SSM/STS probe: `CredentialsProviderError`). Nothing claimed.
+
+### Case B — `bench/demo/case-b/` (clear respondent win: no delivery, sketches invoiced as a full fee)
+- Built: contract (payment strictly after BOTH final deliverables, sketches explicitly not delivery, no-fee-if-undelivered clause), chat log (repeated requests for final files, invoice sent anyway), invoice conceding a "substantially complete" basis; combined into `extracted-e-1.txt` as above.
+- Gold label fixed before any panel run: `goldPayeeShareBps: 0` — clauses 2.1/2.2/2.3 foreclose any award. This case is the citation-discipline test: the correct ruling must quote the contract against the claimant's own record. Divergence rule pre-declared (settled > 2000 bps is a finding).
+- Real execution: **not run** — same credential blocker.
+
+### Case C — `bench/demo/case-c/` (genuine split: partial delivery, disputed scope, contested hold)
+- Built: contract (two-part 300+300 payment, per-week 10-point lateness reduction, a shared-responsibility asset clause with a 2.3 line making a hold the claimant's duty to discharge), chat log (on-time posts, 3-days-late videos, a genuinely contested photo/shot-list stall where both sides have a point), invoice with the claimant's own delivery accounting; combined into `extracted-e-1.txt`.
+- Gold label fixed before any panel run: `goldPayeeShareBps: 5000` with computation `(300·1.00 + 300·(2/3)·0.90)/600 = 4800` rounded to the defensible anchor 5000, acceptable band 4000–6000, and **escalation expected by design** — this is the escalation-path demo feeding the Phase 13/14 review queue; a spread above the 3000 bps threshold here is correct routing, not divergence.
+- Real execution: **not run** — same credential blocker.
+
+### Fallbacks (all three cases)
+- `fallback-ruling.json` (+ `ruling.md` mirror) per case at the confirmed `bench/demo/{caseId}/fallback-ruling.json` layout, `caseId` placeholder `REPLACED_AT_SEED_TIME` to be filled at seed time (per-run, same as demo.ts seeds per generated caseId). Shape mirrors demo.ts's seeded fallback exactly so `failHandler.ts`'s copy and the ruling page both work unchanged.
+- Reachability against the deployed stack **not confirmed** (no credentials). The exact seed + `start-execution` + verify runbook is in `bench/demo/README.md` for the credentialed session; `caseId`s must be `demo-*` for the Catch path to engage.
+
+**Checks run:** fixture consistency pass (clause numbering unique, dates and amounts coherent across contract/chat/invoice/gold); no application code changed on this branch, so the suite was not expected to move — `tsc --noEmit` clean and 452/452 tests green at the base commit (`27b851f`) earlier this session.
+
+**Explicitly not started (per instructions):** the 30–50 case benchmark and the bias-eval dashboard — cut-list/P1.
+
+**To finish when AWS credentials are available:** per case — seed evidence + fallback keys per the README runbook, `start-execution`, record the settled award vs `gold.json` (report divergences as findings), confirm the fallback is reachable under `panch-rulings/{caseId}/ruling.json` if the run fails, and log each result here.
