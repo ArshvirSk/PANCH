@@ -29,3 +29,19 @@ Frontend and Tribunal tasks should import types and mock data from `services/sha
 ## Workflow Integration Notes for Rutu
 - Replace \services/tribunal/stubs/*\ with real handlers. The interface remains the same and no WorkflowStack changes are needed.
 - Replace the placeholder Guardrail config with \services/tribunal/guardrail-config.json\ once available.
+
+## Starting an execution directly from the CLI
+Rutu can start a tribunal run without going through the API:
+
+```
+aws sso login --profile panch
+aws stepfunctions start-execution \
+  --state-machine-arn arn:aws:states:us-east-1:890742603792:stateMachine:TribunalStateMachine6A233CFC-qgpRfMTRy6vo \
+  --input '{"caseId":"<caseId>"}'
+```
+
+- The fixture input is just `{"caseId":"<caseId>"}` — everything else is read from DynamoDB and S3.
+- The state machine ARN above is the deployed one (verified live 2026-09-28); re-derive it with `aws stepfunctions list-state-machines` if a redeploy ever changes it.
+- **Precondition (Phase 16 ledger guard): the seeded case row must have `status: DELIBERATING` before start-execution.** Settle only appends RESOLVE/RELEASE from DELIBERATING/ESCALATED, so a DISPUTED seed passes the run and then fails at SETTLE.
+- Also seed the evidence at `panch-evidence/{caseId}/extracted/e-1.txt` and a fallback at `bench/demo/{caseId}/fallback-ruling.json` (the catch path copies that fallback into `panch-rulings/{caseId}/ruling.json`).
+- Before starting, run `./scripts/verify-access.sh` — it checks every permission this one-liner depends on.

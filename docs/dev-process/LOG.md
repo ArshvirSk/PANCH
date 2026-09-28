@@ -492,3 +492,59 @@ deleted the object (delete marker created), restored the prior version via
 copy-object, served bytes SHA-match the stored `rulingSha256`, public
 `/rulings/{id}/verify` -> match:true, CloudFront 200 throughout the restore.
 Ship gates unchanged (landing 200, /reviews 200, demo ruling 200, API 401).
+
+## Phase 20 — unblock Rutu's access: verification script + CLI runbook (Arshvir/agent, branch `a/feat/unblock-rutu-access`, 2026-09-28)
+
+Rutu's Phase 7/12/15 sessions were blocked on AWS credentials, so her handler
+work was never validated under her own access. This phase closes that: every
+permission TEAM_PLAN §5 grants her was probed live, and she gets a repeatable
+pre-flight script instead of a one-off manual check.
+
+**Access confirmed live (all 18 checks PASS, profile `panch`, SSO session
+`AWSReservedSSO_PanchAdmin_.../Arshvir`):** sts get-caller-identity on the
+shared dev account (890742603792); ssm get-parameter on all four
+`/panch/models/*` keys and both `/panch/config/*` keys; S3 read/write
+round-trip on the `bench/demo` prefix of the evidence bucket (bucket name
+resolved from `/panch/data/buckets/evidence`, not hardcoded); stepfunctions
+list-executions / describe-execution / get-execution-history on the deployed
+Tribunal state machine; and a real Bedrock Converse ping on each judge model
+from SSM (Nova Pro, Mistral Large, Llama 3.3 70B — one ~20-token call each).
+Textract was exercised via `detect-document-text` on a throwaway PNG under
+`bench/demo/tmp-access-check/` (cleaned up) — it passes too, but it is NOT in
+verify-access.sh because it has no free read-only probe (it needs a document;
+TEAM_PLAN §5 notes it). **No CDK changes were needed — zero permission gaps,
+so no deploy in this phase.**
+
+**Note on "Rutu's access":** the account has a single shared SSO permission
+set (`PanchAdmin`); there is no per-person role to differ from Arshvir's.
+So this phase verifies the shared profile covers her needs, not a separate
+Rutu role. Any future least-privilege split is an SSO change outside CDK.
+
+**New: `scripts/verify-access.sh`** — read-only pre-flight Rutu runs before
+every session (after `aws sso login --profile panch`): PASS/FAIL per
+permission (STS identity + account check, SSM model+config keys, S3 ls plus
+put/get round-trip on `bench/demo/tmp-*` then delete, states
+list/describe/history with the SM discovered by name prefix, Bedrock converse
+ping per model from SSM), exits non-zero on any FAIL so it can gate scripts.
+The only paid calls are the tiny Bedrock pings; no state is written except
+the deleted tmp probe object.
+
+**start-execution one-liner re-verified on the deployed SM:** seeded a
+throwaway case (`demo-verify-000134`, status DELIBERATING per the Phase 16
+ledger guard) with case-a fixture evidence + fallback, ran the raw CLI
+`aws stepfunctions start-execution --state-machine-arn <SM> --input
+'{"caseId":"<caseId>"}'` → SUCCEEDED in ~40s, case SETTLED, 2 ledger
+entries, non-fallback ruling published ($0.0419 / rulingSha256 stored) and
+served 200 via CloudFront. The one-liner and its input format are unchanged;
+what was missing was the **DELIBERATING precondition**, now documented.
+
+**docs/CONTRACTS.md (Piyush's directory — single change, flagged):** added a
+"Starting an execution directly from the CLI" section with the exact
+one-liner, the `{"caseId"}` fixture input, the DELIBERATING precondition
+(Phase 16 guard rationale: RESOLVE only from DELIBERATING/ESCALATED, so a
+DISPUTED seed fails at SETTLE), the evidence/fallback seeding keys, and a
+pointer to verify-access.sh. No other docs/ edits.
+
+**Verification:** verify-access.sh 18/18 PASS run twice (probe objects
+deleted after each run); tsc/eslint/tests untouched by this change (script
++ docs only, no runtime code); no deploy required.
