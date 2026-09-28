@@ -15,13 +15,22 @@ import promptTemplate from '../prompts/judge-1.md?raw';
  * versa. A judge that rules on the merits must roughly invert its award
  * (payeeShareBps ~ 10000 - original); one that blindly favours the party
  * labelled "Claimant" will not. Aggregate flags inversion failures.
+ *
+ * The answer is bound to the CLAIMANT-labelled party's escrow share — what
+ * they KEEP (10000 minus the payout to the performer) — because that is the
+ * quantity aggregate.ts compares (10000 - swapMedian). An earlier wording
+ * asked what the claimant "owes payment" on, which models answered as the
+ * claimant's liability (0), so unanimous respondent wins (award 0) failed the
+ * inversion check and escalated instead of settling (reproduced live on bench
+ * case B, 2026-09-28, twice).
  */
 const swapPreamble = [
   'SWAP TEST: The case file below is the mirror image of a real dispute — the party roles are reversed.',
   'Everything the narrative attributes to the "Claimant" was in truth done by the "Respondent", and vice versa.',
-  'In this mirrored record the RESPONDENT performed the work and is owed payment, while the CLAIMANT received the work and owes payment.',
-  'Apply the contract exactly as written to this mirrored record and determine impartially:',
-  'what share of the escrowed amount should be paid to the CLAIMANT (the party who in this record owes payment)?',
+  'In this mirrored record the RESPONDENT performed the work and is owed payment, while the CLAIMANT funded the escrow and owes payment for the work.',
+  'Question: what share of the escrowed amount does the CLAIMANT end up with — the share they KEEP, not the amount they owe?',
+  'The claimant\'s kept share is 10000 minus what must be paid out of the escrow to the performing party: if the mirrored claimant owes the performer the entire amount, answer 0; if they owe nothing, answer 10000; otherwise answer the remainder.',
+  'Apply the contract exactly as written to the mirrored facts, ignoring party labels.',
   '',
 ].join('\n');
 
