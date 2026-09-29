@@ -174,6 +174,19 @@ describe('ruling contract', () => {
     expect(parseRuling({ ...valid, confidence: 2 })).toBeNull();
     expect(parseRuling({ ...valid, findingsOfFact: 'x' })).toBeNull();
   });
+  it('reads the human ruling body POST /reviews publishes and keeps its flag', () => {
+    // Field for field what services/api/reviews.ts postReview writes to ruling.json.
+    const human = {
+      caseId: 'demo-df4844b8', humanReviewed: true, reviewedBy: 'human-review', payeeShareBps: 6000, spreadBps: 4000,
+      findingsOfFact: [], clausesRelied: [], reasoning: 'Late but used.', confidence: 1, uncertainties: [],
+      publishedAt: '2026-09-29T08:00:00Z', entryHash: 'ab'.repeat(32), swapConsistent: true, reviewerSub: 'sub-1',
+    };
+    expect(parseRuling(human)).toEqual({ findingsOfFact: [], clausesRelied: [], payeeShareBps: 6000, reasoning: 'Late but used.', confidence: 1, uncertainties: [], humanReviewed: true });
+  });
+  it('does not mark an AI ruling as human-reviewed', () => {
+    expect(parseRuling(valid)).not.toHaveProperty('humanReviewed');
+    expect(parseRuling({ ...valid, humanReviewed: 'yes' })).not.toHaveProperty('humanReviewed');
+  });
 });
 
 describe('case memory', () => {

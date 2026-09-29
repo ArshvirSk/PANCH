@@ -17,7 +17,8 @@ export type TimelineStage = `${CaseTimelineStage}`;
 export type Case = Omit<CaseItem, 'status'> & { status: Status };
 export type Party = EvidenceItem['party'];
 export type EvidenceType = EvidenceItem['type'];
-export type Ruling = JudgeOutput;
+/** A published ruling is a judge output; `humanReviewed` marks one settled from the review queue. */
+export type Ruling = JudgeOutput & { humanReviewed?: boolean };
 
 /** GET /cases/{id}. The timeline fields arrive once the tribunal workflow is wired. */
 export interface CaseView {
