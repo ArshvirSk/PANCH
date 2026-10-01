@@ -281,6 +281,19 @@ describe('the decision form', () => {
     expect(await screen.findByText('No cases waiting for review')).toBeInTheDocument();
   });
 
+  it('treats the real 409 race answer as already resolved too', async () => {
+    const user = await renderQueue();
+    auth.current.api.resolveReview.mockRejectedValue(new ApiError(409, 'Case already reviewed and settled'));
+    auth.current.api.getReviews.mockResolvedValue([]);
+    await user.type(screen.getByTestId('share-input'), '60');
+    await user.type(screen.getByTestId('note-input'), 'Reasons.');
+    await user.click(screen.getByTestId('resolve'));
+    await user.click(screen.getByTestId('dialog-confirm'));
+    expect(await screen.findByText(/was already resolved by someone else, so nothing was changed/)).toBeInTheDocument();
+    expect(screen.queryByText('Case already reviewed and settled')).not.toBeInTheDocument();
+    expect(auth.current.api.getReviews).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the form filled in when saving fails, so the reviewer can retry', async () => {
     const user = await renderQueue();
     auth.current.api.resolveReview

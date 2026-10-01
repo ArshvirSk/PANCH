@@ -39,5 +39,7 @@ export function parseRuling(body: unknown): Ruling | null {
     reasoning: r.reasoning,
     confidence,
     uncertainties: isStringArray(r.uncertainties) ? r.uncertainties : [],
+    // POST /reviews publishes the reviewer's decision with a fixed confidence of 1 and no findings.
+    ...(r.humanReviewed === true ? { humanReviewed: true } : {}),
   };
 }

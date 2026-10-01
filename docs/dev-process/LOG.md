@@ -549,7 +549,96 @@ pointer to verify-access.sh. No other docs/ edits.
 deleted after each run); tsc/eslint/tests untouched by this change (script
 + docs only, no runtime code); no deploy required.
 
-## Phase 22 - final validation: catch-path fallback confirmed live; everything Bedrock blocked by account-level Error 002 (Rutu, branch `r/feat/final-validation`, 2026-09-29)
+## Phase 21 — ship-gate prep: cost/abuse check on the live stack + SECURITY.md re-audit (Arshvir/agent, branch `a/feat/ship-gate-prep`, 2026-09-29)
+
+Ship-gate prep while Rutu and Piyush finish their lanes. Read-only live
+checks plus one docs/ change (SECURITY.md). **No infra gap found — nothing
+deployed, no CDK change.**
+
+**Cost & abuse checks (all confirmed against the DEPLOYED stack, not code):**
+- `/demo/run` API Gateway throttle live on the prod stage: method setting
+  `/demo/run/POST` → `throttlingRateLimit 2.0 / throttlingBurstLimit 5`
+  (read via `get-stage` `methodSettings`; `get-method-settings` is missing
+  from this aws-cli v2.37.1 build).
+- DynamoDB daily cap live: `DEMO_CAP_YYYY-MM-DD` counter rows in Cases
+  (25 / 13 / 8 for Sep 26/27/28) — separate keys per UTC date prove the cap
+  resets at UTC midnight (`new Date().toISOString().substring(0,10)` UTC).
+  Cap is the code constant 30 (no env override); 429 above 30.
+- Budget: `panch-monthly` $20 monthly cost budget with 85%/100% ACTUAL and
+  100% FORECASTED email notifications to the owner.
+- Alarms: all three (TribunalExecutionsFailed, Api5xx on 5XXError,
+  BedrockThrottles on InvocationThrottles) are in OK state, each with the
+  `panch-alarms` SNS topic as its only alarm action. **Gap found:
+  `panch-alarms` has ZERO subscriptions** — alarm notifications currently go
+  nowhere. Fixing needs Arshvir's (or the team's) confirmed email address —
+  a one-time console/CLI step outside CDK; do not guess it.
+- Demo handler health: 47 invocations in 3 days, max duration 1.83s vs the
+  3s timeout, zero timeouts (the async Gateway→Lambda integration retries
+  for up to ~10s, so headroom is fine at current latency).
+- **Spend to date: $1.153** actual (budget `CalculatedSpend`, ~5.8% of the
+  $20 monthly budget).
+- **Per-case cost range (TRD §12 real number):** n=13 published rulings with
+  costUsd — **min $0.0245, max $0.0419, median $0.0261, mean $0.0294**.
+  Confirms the LOG Phase 11–17 range (~$0.025–0.04, 12 real Bedrock calls
+  per case, ~9–15k tokens).
+
+**docs/SECURITY.md re-audit (the single docs/ change — flagged to Piyush so
+his README/limitations page stays consistent):** verified against the
+deployed stacks and updated: evidenceDeadline enforcement (Phase 18) moved
+out of the gaps list into a new "Landed since the Day 3 pass" section;
+`verifyRuling` stub wording replaced with the real Phase 14 recompute
+behavior; new "Attribution and recovery" (CloudTrail + S3 versioning) and
+"Deploy coordination" (require-deploy-lock.sh) bullets; post-review and the
+response-overdue sweeper's least-privilege shape added to the IAM section;
+header marked as re-audited 2026-09-29. Kept stated plainly: no respondent
+timeout auto-adjudication, PROMPT_ATTACK filter disabled by design
+(false-positives on the judges' own instructions), remaining `xray:*`
+wildcard. Newly added as a gap: the SNS subscription gap above.
+Injection-test result deliberately left out — it lands from Rutu's
+`bench/RESULTS.md` in Part 2B.
+
+**PR reviews:** no open PRs from Rutu or Piyush at time of writing; review
+comments to follow as they open (their lanes are still in progress).
+
+**Verification:** every number above was read from the deployed stack (API
+Gateway stage, DynamoDB items, Budgets API, CloudWatch alarms, SNS topic,
+Lambda config/logs, Rulings scan); `npm test` 409/409 green; docs-only
+change, no deploy needed.
+
+## Phase 22 — live verification of /reviews and ruling verify against real data (Piyush/agent, branch `p/fix/reviews-real-data`, 2026-09-29)
+Verification pass after Phase 14/17, signed in on the deployed site as the synthetic test reviewer.
+
+**Review queue, real data (`https://main.d1hm3x5hny8fjb.amplifyapp.com/reviews/`):**
+- `GET /reviews` returned 9 ESCALATED cases. For every case, every value on screen matched the raw API response: judge awards, confidences, findings/clauses/uncertainty counts, median, spread, and each per-judge swap line. Judges are shown in order, judge-1 to judge-3, even though the API sends them out of order.
+- No fallback path triggered wrongly. None of these appeared: "judges not sent", "output could not be read", "worked out from the awards", or "—" placeholders.
+- The shapes match the UI reader: `panelOutputs.judges` and `swapOutputs` keyed by judge name, `aggregate` nested, `recoveredFromHistory` on legacy rows.
+- `demo-df4844b8` shows judge 1 "Shifted · mirrored 100%, off by 50 pts" and judges 2 and 3 "Consistent".
+- The 4 legacy rows (`recoveredFromHistory: true`, empty `swapOutputs`) show "No swap-test run for this judge." as muted text, not an error.
+- "No written summary was sent with this case" shows on all 9, which is correct: the case model has no summary field.
+
+**One real decision through the UI:** `c-c3ab6359` at 20% with a note. The results:
+- `POST /reviews/c-c3ab6359` returned `200 { status: SETTLED, published: true, entryHash }`, and the case left the queue.
+- `GET /rulings/c-c3ab6359` serves `payeeShareBps: 2000`, `humanReviewed: true`, and the note as `reasoning`. The content hash matches in `/verify`.
+- A second decision from a tab holding the pre-decision queue hit the real API and got `400 "Case must be ESCALATED"`. The page showed "already resolved by someone else, so nothing was changed" and refreshed the queue.
+
+**Mismatches found and fixed (web only):**
+1. The race answer `409 "Case already reviewed and settled"` (`postReview`) was not recognised as a conflict. The UI matched only the 400 wording, so a race showed as a form error. Any 409 is now treated as already resolved. There is a new test, and removing the fix makes it fail.
+2. The ruling page showed a human decision as the panel's ("Decided by a blinded panel of three judges and a presiding judge", "Panel confidence 100%"), because it ignored `humanReviewed`. It now says a human reviewer decided, hides the fixed `confidence: 1` meter, and titles the reasoning "Reviewer's reasons". I confirmed this against the live `c-c3ab6359` ruling with a local build pointed at the production API. AI rulings are unchanged.
+
+**Ruling verification:**
+- `GET /rulings/demo-9bfae5c6/verify` returns `match: true`, with the content hash matched and the chain valid.
+- For the escalated `demo-df4844b8`, both `/rulings/{id}` and `/verify` return 404. The ruling page shows "No published ruling yet" rather than an error.
+- The frontend has **no verification page**: nothing calls `/verify`. Building one would be a new feature, so none was added.
+
+**Backend bug found (Arshvir's area, reported, not changed):**
+- `/verify` on `c-c3ab6359` returns `match: false`, "Ledger chain failed to recompute": entry 2, DISPUTE, is invalid.
+- `services/api/cases.ts:67` writes DISPUTE with `seq: 2, prevHash: 'GENESIS'` instead of chaining onto the FUND entry's hash.
+- So every real case that goes through fund and dispute fails `/verify`, whether the AI or a human settles it. Demo cases skip those steps, which is why they verify.
+- The review's own RESOLVE/RELEASE entries (3 and 4) are valid and chain correctly.
+
+**Checks run:** web tests 414 (5 new), lint, typecheck, `next build`.
+
+## Phase 23 - final validation: catch-path fallback confirmed live; everything Bedrock blocked by account-level Error 002 (Rutu, branch `r/feat/final-validation`, 2026-09-29)
 
 Goal was the remaining validation gaps: live presiding raw-response artifact,
 3x runs of cases A/B/C vs the PRD section 9 metrics, live prompt-injection
