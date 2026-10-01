@@ -1,0 +1,27 @@
+flowchart TD
+  Start(["POST /cases/id/submit or POST /demo/run"]) --> Intake
+
+  subgraph Tribunal["PanchTribunal · Standard · every task retries 3× at 2s with backoff 2.0"]
+    Intake["1 · Intake — Map over evidence<br/>normalize, SHA-256, wrap in evidence tags<br/>known gap: still a stub, seeded evidence only"] --> Blind["2 · Blind — Lambda<br/>names, countries, platforms become Claimant and Respondent<br/>clauses and amounts kept"]
+    Blind --> Judges["3 · Independent rulings — Parallel ×3<br/>Nova Pro · Mistral Large · Llama 3.3 70B<br/>JSON schema validated, every finding cites an evidence ID"]
+    Judges --> Cross["4 · Cross-examination — Parallel ×3, one round<br/>each judge names concrete errors in the other two, then revises"]
+    Cross --> Swap["5 · Swap test — Parallel ×3<br/>parties mirrored, mapped back as 10000 − award"]
+    Swap --> Agg["6 · Aggregate — Lambda<br/>median, spread, per-judge and panel swap consistency"]
+    Agg --> Route{"7 · Route — Choice<br/>spread over 3000 bps,<br/>or the swap flips the winner?"}
+    Route -->|"agree"| Pres["8 · Presiding synthesis — one Bedrock call<br/>median withheld so the award is not anchored<br/>published body is the presiding model's reasoning"]
+    Route -->|"disagree"| Esc["Escalate — Lambda<br/>case → ESCALATED, escrow untouched"]
+    Pres --> Pub["9 · Publish — Lambda<br/>ruling.json hashed byte-for-byte → S3 → CloudFront<br/>Rulings row carries tokens and costUsd"]
+    Pub --> Settle["10 · Settle — Lambda<br/>Ledger RESOLVE then RELEASE<br/>transact write, conditional on case status"]
+    Settle --> Done(["SETTLED · ruling page + Verify ruling"])
+    Esc --> Queue["Human review queue /reviews<br/>three judges side by side, spread, swap verdict"]
+    Queue --> HSettle["POST /reviews/id — payeeShareBps + note<br/>same ledger path, humanReviewed: true"]
+    HSettle --> Done
+  end
+
+  Judges -.->|"throttle or 5xx"| Backoff["Retry ×3 · exponential backoff"]
+  Judges -.->|"any state fails"| Fail["FailLambda<br/>case → FAILED, execution history kept"]
+  Fail --> Fallback{"demo case with<br/>no published ruling?"}
+  Fallback -->|"yes"| Copy["Copy the seeded fallback and label it<br/>not a ruling, no award, escrow untouched"]
+  Fallback -->|"no"| NoWrite["Leave the published ruling alone"]
+  Copy --> Shown(["Ruling page shows Cached fallback · not a ruling"])
+  NoWrite --> Shown

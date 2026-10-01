@@ -1,0 +1,98 @@
+flowchart TB
+  subgraph Client["Anyone — no login for the landing page, the ruling gallery or /demo/run"]
+    B["Browser · Next.js App Router, static export"]
+  end
+
+  subgraph Hosting["Hosting and edge"]
+    AMP["Amplify Hosting — GitHub source, builds main on every merge"]
+    CF["CloudFront + OAC — the only public path to the published rulings object"]
+  end
+
+  COG["Cognito user pool — email sign-in, ID token on protected routes"]
+
+  subgraph EdgeAPI["API Gateway (REST)"]
+    PUB["Public: GET /health · /rulings · /rulings/id · /rulings/id/verify · POST /demo/run with a daily cap"]
+    PRO["Cognito authorizer: POST /cases · /fund · /dispute · /evidence · /submit · GET /cases/id · GET and POST /reviews"]
+  end
+
+  subgraph Compute["Lambda — Node.js 20, TypeScript, one least-privilege IAM role each"]
+    HANDLERS["API handlers: cases · demo · rulings · reviews · health · processEvidence on S3 ObjectCreated, SHA-256"]
+    TRIBUNAL["Tribunal tasks: intake · blind · judge-1/2/3 · crossExam · swapTest · aggregate · presiding · publish · settle · escalate · failHandler"]
+    SWEEP["responseOverdue — hourly sweep, flags overdue FUNDED and DISPUTED cases, never adjudicates"]
+  end
+
+  subgraph Tables["DynamoDB — on-demand, PITR, encrypted"]
+    T1["Cases — status, evidenceDeadline, executionArn"]
+    T2["Evidence — caseId + evidenceId, sha256, guardrailFlags"]
+    T3["Rulings — rulingSha256, tokens, costUsd, escalated"]
+    T4["Ledger — caseId + seq, prevHash, entryHash, transact writes"]
+    T5["BenchCases · BenchRuns"]
+  end
+
+  subgraph Buckets["S3 + KMS"]
+    SB1["evidence — SSE-KMS, versioned, private"]
+    SB2["rulings — private, CloudFront OAC only, 90-day noncurrent expiry"]
+    SB3["benchmark — SSE-KMS"]
+    SB4["CloudTrail — 90-day retention"]
+  end
+
+  subgraph Workflow["Step Functions (Standard) — PanchTribunal"]
+    SM["Intake → Blind → Judges ×3 → Cross-exam → Swap ×3 → Aggregate → Route → Presiding → Publish → Settle, or Escalate"]
+    FAIL["Catch States.ALL → FailLambda — marks FAILED, copies the seeded fallback only when no ruling is published"]
+  end
+
+  subgraph AI["Amazon Bedrock"]
+    MD["Three model families per panel, IDs from SSM /panch/models/judge-1..3 and /panch/models/presiding"]
+    GR["Guardrail — immutable version keyed by a config hash, attached to every Converse call"]
+  end
+
+  subgraph Obs["Observability"]
+    CW["CloudWatch — dashboard, 3 alarms to SNS panch-alarms, EMF metrics for tokens, demo runs and stage durations"]
+    XR["X-Ray — API Gateway, every Lambda, the state machine"]
+    TRAIL["CloudTrail — management events plus S3 data events on evidence and rulings"]
+  end
+
+  subgraph Ops["Configuration and operations"]
+    SSM["SSM Parameter Store — model IDs, per-1k pricing, thresholds, deploy lock /panch/deploy/lock"]
+    SECRETS["Secrets Manager — Amplify GitHub token"]
+    SCHED["EventBridge rate every 1 hour → responseOverdue sweep"]
+    BUDGET["AWS Budgets alert"]
+  end
+
+  B --> AMP
+  B -->|"REST over HTTPS"| PUB
+  B -->|"REST over HTTPS"| PRO
+  COG -.->|"issues the ID token"| PRO
+  PUB --> HANDLERS
+  PRO --> HANDLERS
+  HANDLERS --> T1
+  HANDLERS --> T2
+  HANDLERS --> T3
+  HANDLERS --> T4
+  HANDLERS --> SB1
+  HANDLERS -->|"reads the published JSON"| CF
+  S3Push["evidence PUT, presigned 5 minutes"] --> SB1
+  SB1 -.->|"ObjectCreated"| HANDLERS
+  PRO -->|"StartExecution"| SM
+  PUB -->|"POST /demo/run"| SM
+  SM -.->|"state tasks run in the task Lambdas"| HANDLERS
+  SM --> MD
+  SM -.-> GR
+  SM --> T4
+  SM --> T3
+  SM --> SB2
+  SM -->|"failure"| FAIL
+  FAIL --> SB2
+  CF --> SB2
+  SCHED --> SWEEP
+  SWEEP --> T1
+  SSM -.->|"model IDs, modes, prices"| MD
+  SSM -.->|"thresholds"| SM
+  SECRETS -.-> AMP
+  SM -.-> CW
+  HANDLERS -.-> CW
+  SM -.-> XR
+  BUDGET -.->|"notify before spend"| CW
+  CW -.-> TRAIL
+  TRAIL --> SB4
+  T5 -.->|"bias-eval records"| CW
