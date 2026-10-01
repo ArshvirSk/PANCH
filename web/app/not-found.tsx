@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Icon } from '../components/Icon';
+import { SAMPLE_RULING_HREF } from '../lib/samples';
 
 export default function NotFound() {
   return (
@@ -11,7 +12,7 @@ export default function NotFound() {
         <p className="muted">That page does not exist, or the link is incomplete.</p>
         <div className="row center wrap">
           <Link href="/" className="btn btn-primary">Go to the home page</Link>
-          <Link href="/ruling/?id=c-104" className="btn btn-ghost">See a sample ruling</Link>
+          <Link href={SAMPLE_RULING_HREF} className="btn btn-ghost">See a sample ruling</Link>
         </div>
       </div>
     </div>

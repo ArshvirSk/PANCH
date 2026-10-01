@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
 import { ApiError } from '../../lib/api';
-import { availableActions, getRole, parseCaseIdInput, shouldPoll, type Role } from '../../lib/caseLogic';
+import { availableActions, executionEnded, getRole, parseCaseIdInput, shouldPoll, type Role } from '../../lib/caseLogic';
 import { formatBytes, formatDateTime, formatMoney, shortHash } from '../../lib/format';
 import { createCaseMemory, type StoredReceipt, type StoredUpload } from '../../lib/storage';
 import type { CaseView, LedgerReceipt } from '../../lib/types';
@@ -85,14 +85,16 @@ function CaseDetail({ caseId }: { caseId: string }) {
   }, [caseId, load]);
 
   const status = state.kind === 'ready' ? state.view.case.status : undefined;
+  // A run that ended while the case still reads DELIBERATING will not change on its own: stop polling it.
+  const stuck = state.kind === 'ready' && status === 'DELIBERATING' && executionEnded(state.view.executionStatus);
 
   useEffect(() => {
-    if (!status || !shouldPoll(status)) return;
+    if (!status || !shouldPoll(status) || stuck) return;
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void load(true);
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [status, load]);
+  }, [status, stuck, load]);
 
   async function refresh() {
     setRefreshing(true);
@@ -174,7 +176,7 @@ function CaseDetail({ caseId }: { caseId: string }) {
   const role = getRole(c, user);
   const actions = availableActions(c.status, role);
   const party = role === 'observer' ? null : role;
-  const deliberating = c.status === 'DELIBERATING';
+  const deliberating = c.status === 'DELIBERATING' && !stuck;
   const showTimeline = ['DELIBERATING', 'ESCALATED', 'RULED', 'SETTLED'].includes(c.status);
   const amount = formatMoney(c.amountCents, c.currency);
 
@@ -264,6 +266,11 @@ function CaseDetail({ caseId }: { caseId: string }) {
                   {checkedAt && <span className="muted small block">Last checked {new Date(checkedAt).toLocaleTimeString()}</span>}
                 </p>
               </div>
+            )}
+            {stuck && (
+              <Notice tone="warning" title="The tribunal run ended without an outcome">
+                The panel's run finished ({state.view.executionStatus?.toLowerCase()}) but this case was never updated, so it will not change on its own. Nothing has moved in escrow. Contact the Panch team with the case ID.
+              </Notice>
             )}
             {c.status === 'ESCALATED' && (
               <Notice tone="warning" title="Sent to human review">

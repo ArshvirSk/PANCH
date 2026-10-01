@@ -11,11 +11,13 @@ import type {
   ReviewDecision,
   ReviewResult,
   Ruling,
+  RulingVerification,
   Status,
   TimelineStage,
 } from './types';
 import { parseRuling } from './ruling';
 import { normalizeReviewCase, reviewItems } from './reviews';
+import { completedStages } from './caseLogic';
 
 export class ApiError extends Error {
   /** HTTP status, or 0 when the request never reached the server. */
@@ -68,7 +70,11 @@ async function readBody(res: Response): Promise<unknown> {
 }
 
 function errorMessage(status: number, body: unknown): string {
-  if (status === 429) return 'Too many requests right now. Please wait a moment and try again.';
+  if (status === 429) {
+    // The demo's daily cap answers 429 with its own plain message; API Gateway throttling does not.
+    const own = body && typeof body === 'object' ? (body as Record<string, unknown>).error : undefined;
+    return typeof own === 'string' && own ? own : 'Too many requests right now. Please wait a moment and try again.';
+  }
   // Server-side failures can carry internal details (SDK errors); never show those to users.
   if (status >= 500) return `The Panch service had a problem (error ${status}). Please try again shortly.`;
   if (body && typeof body === 'object') {
@@ -97,20 +103,22 @@ function asString(value: unknown): string | undefined {
 }
 
 /**
- * GET /cases/{id} currently returns the Cases item itself. The mock server (and
- * the planned timeline shape) wrap it as `{ case, timeline }`. Accept both.
+ * GET /cases/{id} returns the Cases item itself, with `currentStage` (the last
+ * workflow state entered) and `executionStatus` added while a tribunal run
+ * exists. The mock server wraps it as `{ case, timeline }`. Accept both.
  */
 export function normalizeCaseView(body: unknown): CaseView {
   const record = asObject(body);
-  const inner = record.case && typeof record.case === 'object' ? record.case : record;
-  const caseItem = inner as Case;
+  const inner = asObject(record.case && typeof record.case === 'object' ? record.case : record);
+  const caseItem = inner as unknown as Case;
   if (!caseItem.caseId || !caseItem.status) {
     throw new ApiError(502, 'The API returned an unexpected case shape.');
   }
   const timeline = Array.isArray(record.timeline)
     ? (record.timeline.filter((s) => typeof s === 'string') as TimelineStage[])
-    : [];
-  return { case: caseItem, timeline };
+    : completedStages(caseItem.status, asString(inner.currentStage));
+  const executionStatus = asString(inner.executionStatus);
+  return { case: caseItem, timeline, ...(executionStatus ? { executionStatus } : {}) };
 }
 
 export function createApiClient(options: ApiClientOptions) {
@@ -208,6 +216,11 @@ export function createApiClient(options: ApiClientOptions) {
       return normalizeCaseView(await request(casePath(caseId), { auth: true }));
     },
 
+    /** Demo cases (POST /demo/run) are readable without login, so a logged-out visitor can follow the run. */
+    async getDemoCase(caseId: string): Promise<CaseView> {
+      return normalizeCaseView(await request(casePath(caseId)));
+    },
+
     fundCase: (caseId: string) => transition(caseId, 'fund'),
     disputeCase: (caseId: string) => transition(caseId, 'dispute'),
 
@@ -268,6 +281,20 @@ export function createApiClient(options: ApiClientOptions) {
         await request(`reviews/${encodeURIComponent(caseId)}`, { method: 'POST', body: decision, auth: true }),
       );
       return { caseId: asString(body.caseId) ?? caseId, status: asString(body.status) ?? 'RESOLVED' };
+    },
+
+    /** Public. Recomputes the ruling's hash and ledger chain; null when there is no published ruling to check. */
+    async verifyRuling(caseId: string): Promise<RulingVerification | null> {
+      try {
+        const body = asObject(await request(`rulings/${encodeURIComponent(caseId)}/verify`));
+        if (typeof body.match !== 'boolean' || !body.content || !body.ledger) {
+          throw new ApiError(502, 'The verification service returned an unexpected answer.');
+        }
+        return body as unknown as RulingVerification;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
     },
 
     /** Public, no login. */

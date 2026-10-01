@@ -5,13 +5,17 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
 import { parseCaseIdInput } from '../../lib/caseLogic';
-import { bpsToPercent } from '../../lib/format';
+import { bpsToPercent, clauseLabel } from '../../lib/format';
 import type { Ruling } from '../../lib/types';
 import { CopyButton } from '../../components/CopyButton';
 import { EmptyState } from '../../components/EmptyState';
 import { Icon } from '../../components/Icon';
+import { Notice } from '../../components/Notice';
+import { RichText } from '../../components/RichText';
+import { VerifyPanel } from '../../components/VerifyPanel';
 import { PageSkeleton } from '../../components/Skeleton';
 import { Spinner } from '../../components/Spinner';
+import { SAMPLE_RULING_HREF } from '../../lib/samples';
 
 type LoadState = { kind: 'loading' } | { kind: 'ready'; ruling: Ruling } | { kind: 'missing' } | { kind: 'error'; message: string };
 
@@ -28,6 +32,45 @@ function ConfidenceMeter({ value }: { value: number }) {
         <span style={{ width: `${pct}%` }} />
       </div>
     </div>
+  );
+}
+
+/**
+ * A failed demo run serves a cached body instead of a ruling (failHandler.ts): the
+ * award is zeroed only because no award exists. Showing it as "Claim dismissed in full"
+ * would be false, so it gets its own page that says what it is.
+ */
+function FallbackView({ caseId, ruling }: { caseId: string; ruling: Ruling }) {
+  return (
+    <article className="award" data-testid="fallback-ruling">
+      <header className="award-head">
+        <div className="award-seal award-seal-muted" aria-hidden="true"><Icon name="alert" size={26} /></div>
+        <div className="award-title">
+          <p className="eyebrow">Cached fallback · not a ruling</p>
+          <h1>Case <span className="mono">{caseId}</span></h1>
+          <p className="muted">The live tribunal did not finish this demo run, so no award was made.</p>
+        </div>
+      </header>
+      <section className="award-section">
+        <Notice tone="warning" title="This is a cached fallback, not a ruling">
+          It is a pre-written placeholder shown because the run failed. No judge decided this case, no money moved, and the escrow is untouched: no RESOLVE or RELEASE was recorded.
+        </Notice>
+      </section>
+      <section className="award-section" aria-labelledby="fallback-what">
+        <h2 id="fallback-what">What happened</h2>
+        <RichText className="prose" text={ruling.reasoning} />
+        {ruling.uncertainties.length > 0 && (
+          <ul className="uncertainties">
+            {ruling.uncertainties.map((u, i) => <li key={i}><Icon name="info" size={15} />{u}</li>)}
+          </ul>
+        )}
+      </section>
+      <footer className="award-foot">
+        <p className="row-gap wrap">
+          <Link href="/#demo">Run the demo again</Link> · <Link href={SAMPLE_RULING_HREF}>See a published ruling</Link>
+        </p>
+      </footer>
+    </article>
   );
 }
 
@@ -52,8 +95,8 @@ function RulingView({ caseId }: { caseId: string }) {
   if (state.kind === 'missing') {
     return (
       <div className="card narrow">
-        <EmptyState icon="clock" title="No published ruling yet" action={<Link href="/ruling/?id=c-104" className="btn btn-secondary btn-sm">See a sample ruling</Link>}>
-          There is no published ruling for case <code>{caseId}</code>. If the panel is still deliberating, check back soon.
+        <EmptyState icon="clock" title="No published ruling yet" action={<Link href={SAMPLE_RULING_HREF} className="btn btn-secondary btn-sm">See a sample ruling</Link>}>
+          There is no published ruling for case <code>{caseId}</code>. If the panel is still deliberating, or the case went to human review, check back once it settles.
         </EmptyState>
       </div>
     );
@@ -73,6 +116,7 @@ function RulingView({ caseId }: { caseId: string }) {
   }
 
   const r = state.ruling;
+  if (r.fallback) return <FallbackView caseId={caseId} ruling={r} />;
   const claimantShare = r.payeeShareBps;
   const respondentShare = 10000 - claimantShare;
   const outcome = claimantShare === 10000 ? 'Award in full to the claimant' : claimantShare === 0 ? 'Claim dismissed in full' : 'Split award';
@@ -119,15 +163,21 @@ function RulingView({ caseId }: { caseId: string }) {
         {!human && <ConfidenceMeter value={r.confidence} />}
       </section>
 
+      <VerifyPanel caseId={caseId} />
+
       <section className="award-section" aria-labelledby="reasoning-title">
         <h2 id="reasoning-title"><span className="numeral">I.</span> {human ? "Reviewer's reasons" : 'Reasoning'}</h2>
-        <p className="prose">{r.reasoning}</p>
+        <RichText className="prose" text={r.reasoning} />
       </section>
 
       <section className="award-section" aria-labelledby="findings-title">
         <h2 id="findings-title"><span className="numeral">II.</span> Findings of fact</h2>
         {r.findingsOfFact.length === 0 ? (
-          <p className="muted">No findings with evidence citations were made.</p>
+          <p className="muted" data-testid="no-findings">
+            {human
+              ? "The reviewer decided from the panel's full record; the reasons above are the decision, so no findings are restated here."
+              : 'No findings with evidence citations were made.'}
+          </p>
         ) : (
           <ol className="findings">
             {r.findingsOfFact.map((f, i) => (
@@ -145,12 +195,12 @@ function RulingView({ caseId }: { caseId: string }) {
       <section className="award-section" aria-labelledby="clauses-title">
         <h2 id="clauses-title"><span className="numeral">III.</span> Contract clauses relied on</h2>
         {r.clausesRelied.length === 0 ? (
-          <p className="muted">No contract clauses were cited.</p>
+          <p className="muted">{human ? 'No clauses are restated by the reviewer.' : 'No contract clauses were cited.'}</p>
         ) : (
           <dl className="clauses">
             {r.clausesRelied.map((c, i) => (
               <div key={i} className="clause">
-                <dt>Clause {c.clauseRef}</dt>
+                <dt>{clauseLabel(c.clauseRef)}</dt>
                 <dd>{c.interpretation}</dd>
               </div>
             ))}
@@ -183,7 +233,7 @@ function RulingPageInner() {
   if (!parsed.ok) {
     return (
       <div className="card narrow">
-        <EmptyState icon="search" title={raw.trim() ? 'This ruling link is not valid' : 'No case selected'} action={<Link href="/ruling/?id=c-104" className="btn btn-secondary btn-sm">See a sample ruling</Link>}>
+        <EmptyState icon="search" title={raw.trim() ? 'This ruling link is not valid' : 'No case selected'} action={<Link href={SAMPLE_RULING_HREF} className="btn btn-secondary btn-sm">See a sample ruling</Link>}>
           Rulings are opened from a case, or from the link shared with the parties.
         </EmptyState>
       </div>

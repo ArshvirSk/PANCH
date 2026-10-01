@@ -1,4 +1,4 @@
-import type { Case, Party, Status } from './types';
+import type { Case, Party, Status, TimelineStage } from './types';
 import { normalizeEmail } from './format';
 
 export type Role = Party | 'observer';
@@ -81,6 +81,43 @@ export function availableActions(status: Status, role: Role): CaseAction[] {
 /** Statuses where the tribunal is still working and the page should keep polling. */
 export function shouldPoll(status: Status): boolean {
   return status === 'DELIBERATING';
+}
+
+/** Step Functions states that end a run. A case still DELIBERATING after one of these is stuck, not working. */
+const TERMINAL_EXECUTIONS = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'ABORTED']);
+
+export function executionEnded(executionStatus: string | undefined): boolean {
+  return !!executionStatus && TERMINAL_EXECUTIONS.has(executionStatus);
+}
+
+const TIMELINE_ORDER: TimelineStage[] = ['INTAKE', 'BLIND', 'JUDGES', 'CROSS_EXAM', 'SWAP_TEST', 'AGGREGATE', 'PRESIDING', 'PUBLISH', 'SETTLE'];
+
+/**
+ * GET /cases/{id} reports `currentStage` as the name of the last workflow state
+ * entered (WorkflowStack): a stage name, or a task inside a parallel stage such
+ * as Judge2, CrossExamJudge1 or SwapTestJudge3. Maps it onto a timeline stage.
+ */
+export function stageOf(currentStage: string | undefined): TimelineStage | null {
+  if (!currentStage) return null;
+  if ((TIMELINE_ORDER as string[]).includes(currentStage)) return currentStage as TimelineStage;
+  if (/^Judge\d$/.test(currentStage)) return 'JUDGES';
+  if (/CrossExam|CE$/.test(currentStage)) return 'CROSS_EXAM';
+  if (/SwapTest|ST$/.test(currentStage)) return 'SWAP_TEST';
+  if (currentStage === 'PrepareAggregate' || currentStage === 'ESCALATE' || currentStage === 'Route') return 'AGGREGATE';
+  if (currentStage === 'MergePresiding') return 'PRESIDING';
+  return null;
+}
+
+/**
+ * The stages already finished. While a stage runs, the ones before it are done;
+ * a ruled or settled case has finished them all. An escalated case stops after
+ * aggregation, the point where the panel handed it to a human.
+ */
+export function completedStages(status: Status, currentStage: string | undefined): TimelineStage[] {
+  if (status === 'RULED' || status === 'SETTLED') return TIMELINE_ORDER;
+  if (status === 'ESCALATED') return TIMELINE_ORDER.slice(0, TIMELINE_ORDER.indexOf('AGGREGATE') + 1);
+  const stage = stageOf(currentStage);
+  return stage ? TIMELINE_ORDER.slice(0, TIMELINE_ORDER.indexOf(stage)) : [];
 }
 
 export const STATUS_LABELS: Record<Status, string> = {
