@@ -674,6 +674,36 @@ textarea:disabled { opacity: 0.6; }
 .preset:disabled { opacity: 0.55; cursor: not-allowed; }
 .preset .tabular { font-weight: 700; }
 
+/* ---------- Live model output ---------- */
+/* Reasoning is rendered as paragraphs (RichText); long unbroken tokens such as hashes or e-1#ARTIFACT_2 must wrap. */
+.prose, .judge-reasoning, .findings p, .clause dd, .uncertainties li, .notice-content { overflow-wrap: anywhere; }
+.prose p + p, .judge-reasoning p + p { margin-top: 0.85rem; }
+.prose p, .judge-reasoning p { margin-bottom: 0; }
+.chip { max-width: 100%; overflow-wrap: anywhere; }
+.prose + .uncertainties { margin-top: 1rem; }
+
+/* ---------- Demo progress (inside the dark demo band) ---------- */
+.demo-progress { color: var(--text); margin-top: 1.25rem; box-shadow: none; }
+.demo-progress-title { font-weight: 650; margin: 0; }
+.demo-progress .timeline { margin-top: 1rem; }
+
+/* ---------- Verify ruling ---------- */
+.verify-title { font-family: var(--font-sans); font-size: 1.05rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.verify-facts { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); margin: 0.75rem 0 0; }
+.verify-facts > div { padding: 0.75rem 0.9rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.verify-facts dt { font-size: 0.8rem; font-weight: 650; color: var(--muted); }
+.verify-facts dd { margin: 0.15rem 0 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.verify-hash { font-size: 0.78rem; align-self: flex-start; overflow-wrap: anywhere; }
+.verify-ledger { margin-top: 0.75rem; }
+.ledger li.ledger-bad { border-color: var(--danger-border); background: var(--danger-soft); }
+.ledger li.ledger-bad .small { color: var(--danger); font-weight: 600; }
+.award-seal-muted { background: var(--surface-3); color: var(--warning); }
+
+/* ---------- Limitations ---------- */
+.limitations { list-style: none; display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.limitation h2 { display: flex; gap: 0.45rem; align-items: baseline; margin-bottom: 0.5rem; }
+.limitation p { color: var(--text-2); }
+
 /* ---------- Print: the ruling as a clean document ---------- */
 @media print {
   .site-header, .site-footer, .skip-link, .no-print, .config-banner { display: none !important; }

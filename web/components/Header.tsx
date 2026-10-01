@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
+import { SAMPLE_RULING_HREF } from '../lib/samples';
 
 function initialOf(email: string | undefined): string {
   return (email?.trim()[0] ?? '?').toUpperCase();
@@ -49,7 +50,7 @@ export function Header() {
         <nav id="site-nav" className={menuOpen ? 'nav nav-open' : 'nav'} aria-label="Main">
           <Link href="/#how" className="nav-link">How it works</Link>
           <Link href="/#demo" className="nav-link">Demo</Link>
-          <Link href="/ruling/?id=c-104" className={`nav-link${pathname === '/ruling/' ? ' active' : ''}`}>Sample ruling</Link>
+          <Link href={SAMPLE_RULING_HREF} className={`nav-link${pathname === '/ruling/' ? ' active' : ''}`}>Sample ruling</Link>
           {status === 'signedIn' && (
             <>
               <Link href="/cases/" className={`nav-link${isActive('/cases/') ? ' active' : ''}`}>My cases</Link>

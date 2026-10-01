@@ -17,13 +17,18 @@ export type TimelineStage = `${CaseTimelineStage}`;
 export type Case = Omit<CaseItem, 'status'> & { status: Status };
 export type Party = EvidenceItem['party'];
 export type EvidenceType = EvidenceItem['type'];
-/** A published ruling is a judge output; `humanReviewed` marks one settled from the review queue. */
-export type Ruling = JudgeOutput & { humanReviewed?: boolean };
+/**
+ * A published ruling is a judge output. `humanReviewed` marks one settled from the review queue;
+ * `fallback` marks the cached body a failed demo run serves instead of an award.
+ */
+export type Ruling = JudgeOutput & { humanReviewed?: boolean; fallback?: boolean };
 
 /** GET /cases/{id}. The timeline fields arrive once the tribunal workflow is wired. */
 export interface CaseView {
   case: Case;
   timeline: TimelineStage[];
+  /** Step Functions status of the case's run (RUNNING, SUCCEEDED, FAILED, ...), when there is one. */
+  executionStatus?: string;
 }
 
 export interface LedgerReceipt {
@@ -99,4 +104,13 @@ export interface ReviewDecision {
 export interface ReviewResult {
   caseId: string;
   status: string;
+}
+
+/** GET /rulings/{id}/verify (services/api/rulings.ts verifyRuling). */
+export interface RulingVerification {
+  match: boolean;
+  reason: string;
+  content: { computedHash: string; storedHash: string | null; match: boolean | null; verified: boolean };
+  ledger: { entries: { seq: number; event: string; entryHash: string; valid: boolean }[]; chainValid: boolean; terminalOk: boolean; lastEvent: string | null };
+  verifiedAt?: string;
 }

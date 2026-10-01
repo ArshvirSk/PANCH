@@ -207,6 +207,102 @@ describe('public ruling page', () => {
     expect(screen.getByRole('heading', { name: /Reasoning/ })).toBeInTheDocument();
   });
 
+  it('labels a failed demo run\'s cached fallback honestly and shows no award', async () => {
+    // Field for field the body failHandler.ts copies into place (bench/demo/case-b/fallback-ruling.json).
+    await show({
+      caseId: 'demo-ba-b', payeeShareBps: 0, spreadBps: 0, swapConsistent: false, findingsOfFact: [], clausesRelied: [],
+      reasoning: 'The live tribunal could not complete deliberation for this demo case, so no award was reached and escrow is unaffected.',
+      confidence: 0, uncertainties: ['Tribunal failure — no ruling was reached'], fallback: true, publishedAt: '2026-09-28T00:00:00.000Z',
+    }, 'demo-ba-b');
+    const page = await screen.findByTestId('fallback-ruling');
+    expect(page).toHaveTextContent('Cached fallback · not a ruling');
+    expect(page).toHaveTextContent('This is a cached fallback, not a ruling');
+    expect(page).toHaveTextContent('the escrow is untouched');
+    expect(screen.queryByTestId('ruling')).not.toBeInTheDocument();
+    expect(screen.queryByText('Claim dismissed in full', { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('claimant-share')).not.toBeInTheDocument();
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('verify-panel')).not.toBeInTheDocument();
+    expect(screen.getByText('Tribunal failure — no ruling was reached')).toBeInTheDocument();
+  });
+
+  it('renders the presiding judge\'s markdown as formatting, not asterisks', async () => {
+    await show({ ...RULING, reasoning: 'The tribunal follows **judge-2** and **judge-3** (e-1#ARTIFACT_2).\n\n**judge-1** did not engage with `e-1`.\nA second line.' });
+    const text = await screen.findByTestId('rich-text');
+    expect(text.querySelectorAll('p')).toHaveLength(2);
+    expect(within(text).getByText('judge-2').tagName).toBe('STRONG');
+    expect(within(text).getByText('e-1').tagName).toBe('CODE');
+    expect(text.textContent).not.toContain('**');
+    expect(text.querySelector('br')).not.toBeNull();
+  });
+
+  it('leaves unbalanced markdown and hostile tags as plain text', async () => {
+    await show({ ...RULING, reasoning: '**unclosed bold and <img src=x onerror="window.__pwned=1"> **<script>x</script>**' });
+    const text = await screen.findByTestId('rich-text');
+    expect(text.querySelector('img, script')).toBeNull();
+    expect(text.textContent).toContain('<img src=x');
+    expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+  });
+
+  it('says what a human reviewer\'s empty findings mean', async () => {
+    await show({ ...RULING, findingsOfFact: [], clausesRelied: [], humanReviewed: true, confidence: 1 });
+    expect(await screen.findByTestId('no-findings')).toHaveTextContent("The reviewer decided from the panel's full record");
+    expect(screen.getByText('No clauses are restated by the reviewer.')).toBeInTheDocument();
+  });
+
+  describe('verify', () => {
+    const VERIFIED = {
+      caseId: 'c-104', match: true, reason: 'Ruling content matches the stored hash and the ledger chain recomputes clean from genesis.',
+      content: { computedHash: 'a'.repeat(64), storedHash: 'a'.repeat(64), match: true, verified: true },
+      ledger: { entries: [{ seq: 1, event: 'RESOLVE', entryHash: 'b'.repeat(64), valid: true }, { seq: 2, event: 'RELEASE', entryHash: 'c'.repeat(64), valid: true }], chainValid: true, terminalOk: true, consistent: true, lastEvent: 'RELEASE' },
+    };
+
+    it('shows a verified ruling with its content hash and ledger chain', async () => {
+      await show(RULING);
+      auth.current.api.verifyRuling.mockResolvedValue(VERIFIED);
+      await userEvent.setup().click(await screen.findByTestId('verify-button'));
+      const result = await screen.findByTestId('verify-result');
+      expect(result).toHaveAttribute('data-match', 'true');
+      expect(result).toHaveTextContent('Verified');
+      expect(result).toHaveTextContent('Matches the signed hash');
+      expect(result).toHaveTextContent('Chain of 2 entries recomputes cleanly, ends at RELEASE');
+      expect(within(result).getAllByRole('listitem')).toHaveLength(2);
+      expect(auth.current.api.verifyRuling).toHaveBeenCalledWith('c-104');
+    });
+
+    it('shows a failed verification with the server\'s reason and the bad entry', async () => {
+      await show(RULING);
+      auth.current.api.verifyRuling.mockResolvedValue({
+        ...VERIFIED, match: false, reason: 'Ledger chain failed to recompute: an entry hash or link is invalid.',
+        ledger: { ...VERIFIED.ledger, chainValid: false, entries: [{ seq: 1, event: 'FUND', entryHash: 'd'.repeat(64), valid: true }, { seq: 2, event: 'DISPUTE', entryHash: 'e'.repeat(64), valid: false }] },
+      });
+      await userEvent.setup().click(await screen.findByTestId('verify-button'));
+      const result = await screen.findByTestId('verify-result');
+      expect(result).toHaveAttribute('data-match', 'false');
+      expect(result).toHaveTextContent('Not verified');
+      expect(result).toHaveTextContent('Ledger chain failed to recompute');
+      expect(result).toHaveTextContent('Chain does not recompute');
+      expect(within(result).getByText(/2\. DISPUTE/).closest('li')).toHaveClass('ledger-bad');
+    });
+
+    it('says there is nothing to verify when no signed ruling exists', async () => {
+      await show(RULING);
+      auth.current.api.verifyRuling.mockResolvedValue(null);
+      await userEvent.setup().click(await screen.findByTestId('verify-button'));
+      expect(await screen.findByText('Nothing to verify yet')).toBeInTheDocument();
+    });
+
+    it('reports a verification error and allows another try', async () => {
+      await show(RULING);
+      auth.current.api.verifyRuling.mockRejectedValueOnce(new ApiError(0, 'Could not reach the Panch API.')).mockResolvedValueOnce(VERIFIED);
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId('verify-button'));
+      expect(await screen.findByText('Verification could not run')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Verify again/ }));
+      expect(await screen.findByTestId('verify-result')).toHaveAttribute('data-match', 'true');
+    });
+  });
+
   it('not published → friendly empty state', async () => {
     await show(null, 'c-new');
     expect(await screen.findByText('No published ruling yet')).toBeInTheDocument();
@@ -232,25 +328,101 @@ describe('public ruling page', () => {
 });
 
 describe('demo runner', () => {
+  const demoView = (status: string, extra: Record<string, unknown> = {}) => ({
+    case: makeCase({ caseId: 'demo-1', status: status as never }),
+    timeline: [] as string[],
+    ...extra,
+  });
+  const start = async (view: unknown) => {
+    const user = userEvent.setup();
+    auth.current = freshAuth({ status: 'signedOut', user: undefined });
+    auth.current.api.runDemo.mockResolvedValue({ message: 'Demo case started.', caseId: 'demo-1' });
+    auth.current.api.getDemoCase.mockResolvedValue(view);
+    render(<DemoRunner />);
+    await user.click(screen.getByTestId('run-demo'));
+    await screen.findByTestId('demo-progress');
+    return user;
+  };
+
   it('starts the demo once, even on a double click', async () => {
     const user = userEvent.setup();
     let release!: (v: unknown) => void;
     auth.current.api.runDemo.mockReturnValue(new Promise((r) => { release = r; }));
+    auth.current.api.getDemoCase.mockResolvedValue(demoView('DELIBERATING'));
     render(<DemoRunner />);
     await user.dblClick(screen.getByTestId('run-demo'));
     expect(auth.current.api.runDemo).toHaveBeenCalledOnce();
-    release({ message: 'Demo run started', caseId: 'c-demo', executionArn: 'arn:aws:states:x' });
-    expect(await screen.findByText('Demo run started')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open its ruling page' })).toHaveAttribute('href', expect.stringMatching(/^\/ruling\/?\?id=c-demo$/));
+    release({ message: 'Demo case started.', caseId: 'demo-1' });
+    expect(await screen.findByTestId('demo-progress')).toHaveTextContent('demo-1');
+    expect(screen.getByTestId('run-demo')).toBeDisabled(); // no second run while this one is followed
   });
 
-  it('shows a failure and allows another try', async () => {
+  it('follows a logged-out run on the live timeline', async () => {
+    await start(demoView('DELIBERATING', { timeline: ['INTAKE', 'BLIND', 'JUDGES'] }));
+    await waitFor(() => expect(auth.current.api.getDemoCase).toHaveBeenCalledWith('demo-1'));
+    expect(auth.current.api.getCase).not.toHaveBeenCalled(); // the signed-in read would 401 a visitor
+    const timeline = await screen.findByTestId('tribunal-timeline');
+    await waitFor(() => expect(within(timeline).getByText('Cross-examination').closest('li')).toHaveClass('timeline-current'));
+    expect(within(timeline).getByText('Independent rulings').closest('li')).toHaveClass('timeline-done');
+    expect(screen.getByText(/This usually takes one to three minutes/)).toBeInTheDocument();
+  });
+
+  it('links to the ruling once the panel has ruled', async () => {
+    await start(demoView('SETTLED'));
+    expect(await screen.findByText('The panel has ruled')).toBeInTheDocument();
+    expect(screen.getByTestId('demo-ruling-link')).toHaveAttribute('href', expect.stringMatching(/^\/ruling\/?\?id=demo-1$/));
+    expect(screen.getByTestId('run-demo')).toBeEnabled();
+  });
+
+  it('explains an escalated run instead of promising a ruling', async () => {
+    await start(demoView('ESCALATED'));
+    expect(await screen.findByText('Sent to human review')).toBeInTheDocument();
+    expect(screen.getByText(/there is no ruling to read yet/)).toBeInTheDocument();
+  });
+
+  it('says a failed run made no award and the page shows a labelled fallback', async () => {
+    await start(demoView('FAILED'));
+    expect(await screen.findByText('The tribunal could not finish this run')).toBeInTheDocument();
+    expect(screen.getByText(/escrow is untouched/)).toBeInTheDocument();
+  });
+
+  it('stops following a run that ended while the case still reads DELIBERATING', async () => {
+    await start(demoView('DELIBERATING', { executionStatus: 'SUCCEEDED' }));
+    expect(await screen.findByText('The run ended without an outcome')).toBeInTheDocument();
+    const calls = auth.current.api.getDemoCase.mock.calls.length;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(auth.current.api.getDemoCase.mock.calls.length).toBe(calls);
+  });
+
+  it('shows the daily cap message the API sends, and allows another try', async () => {
     const user = userEvent.setup();
-    auth.current.api.runDemo.mockRejectedValueOnce(new ApiError(429, 'Too many requests right now. Please wait a moment and try again.'));
+    auth.current.api.runDemo.mockRejectedValueOnce(new ApiError(429, 'Daily demo limit reached. Try again tomorrow.'));
     render(<DemoRunner />);
     await user.click(screen.getByTestId('run-demo'));
-    expect(await screen.findByText(/Too many requests/)).toBeInTheDocument();
+    expect(await screen.findByText('Daily demo limit reached. Try again tomorrow.')).toBeInTheDocument();
     expect(screen.getByTestId('run-demo')).toBeEnabled();
+  });
+});
+
+describe('limitations', () => {
+  it('lists the known gaps in plain language and is linked from the footer', async () => {
+    const { default: LimitationsPage } = await import('../app/limitations/page');
+    const { Footer } = await import('../components/Footer');
+    render(<><LimitationsPage /><Footer /></>);
+    const items = within(screen.getByTestId('limitations')).getAllByRole('listitem');
+    const titles = items.map((li) => within(li).getByRole('heading').textContent);
+    for (const gap of ['The escrow is simulated', 'There is no appeal window', 'A silent respondent is not timed out', 'Any signed-in account can act as a reviewer', 'Judges vary from run to run', 'The swap test has blind spots', 'Cases have no written summary', 'All data is synthetic']) {
+      expect(titles.some((t) => t?.includes(gap))).toBe(true);
+    }
+    expect(screen.getByRole('link', { name: 'Limitations' })).toHaveAttribute('href', expect.stringMatching(/^\/limitations\/?$/));
+  });
+
+  it('a clauseRef that already says "Clause" is not doubled on the ruling page', async () => {
+    setSearch('id=demo-1', '/ruling/');
+    auth.current.api.getRuling.mockResolvedValue({ ...RULING, clausesRelied: [{ clauseRef: 'Clause 3.1', interpretation: 'Pay on delivery' }] });
+    render(<RulingPage />);
+    expect(await screen.findByText('Clause 3.1')).toBeInTheDocument();
+    expect(screen.queryByText(/Clause Clause/)).not.toBeInTheDocument();
   });
 });
 

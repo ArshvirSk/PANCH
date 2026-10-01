@@ -1,8 +1,151 @@
 # Panch
 
-The AI panchayat for disputes no court will hear. Built for AWS Zero to Shipped Hackathon.
+**The AI panchayat for disputes no court will hear.** Built for the AWS Zero to Shipped hackathon · `#commercial-potential` · `#startup`
 
-## 📚 Essential Reading
+**Live:** https://main.d1hm3x5hny8fjb.amplifyapp.com. No login is needed for the landing page, **Run demo case** or the public rulings.
+
+## In 30 seconds
+
+A freelancer in Mumbai finishes $400 of work for a client in Berlin, and the client stops paying. A lawyer costs more than the claim and a foreign court won't hear it. Panch is consent-based arbitration for these small cross-border disputes:
+- Both sides agree to Panch when they make the deal, and the client funds a simulated escrow.
+- In a dispute, three judges from three model families (Amazon Nova, Mistral and Llama on Bedrock) rule independently on a record with names and countries removed. They then cross-examine each other.
+- A swap test mirrors the parties to catch label bias.
+- When the judges agree, a presiding judge publishes a reasoned ruling: every finding cites evidence, and its hash and escrow ledger can be verified by anyone.
+- When they don't agree, a human decides from the full panel record.
+
+Measured cost: about **$0.03 per case**.
+
+## Try it
+
+| What | Where |
+|---|---|
+| Run a pre-seeded case through the real tribunal and watch the live timeline | Landing page → **Run demo case** |
+| A published ruling, with **Verify ruling** (recomputes the content hash and the ledger chain) | [Case A ruling](https://main.d1hm3x5hny8fjb.amplifyapp.com/ruling/?id=demo-ba-a-354484) |
+| The full flow: create a case, fund, dispute, upload evidence, submit | Sign up (email), then **My cases → New case** |
+| The human review queue for escalated cases | Sign in → **Reviews** |
+| What Panch does not do yet | [Limitations](https://main.d1hm3x5hny8fjb.amplifyapp.com/limitations/) |
+
+## How it works
+
+```mermaid
+flowchart TB
+  subgraph Web["Next.js on Amplify Hosting"]
+    UI["Case flow · live timeline · ruling + verify · review queue"]
+  end
+  subgraph API["API Gateway + Lambda · Cognito"]
+    Cases["/cases · /demo/run"]
+    Rulings["/rulings · /verify"]
+    Reviews["/reviews"]
+  end
+  subgraph SFN["Step Functions: tribunal"]
+    direction LR
+    Intake["Intake"] --> Blind["Blind<br/>names → Claimant / Respondent"]
+    Blind --> Judges["3 judges in parallel<br/>Nova · Mistral · Llama"]
+    Judges --> Cross["Cross-examination"]
+    Cross --> Swap["Swap test<br/>parties mirrored"]
+    Swap --> Agg["Aggregate<br/>median · spread · swap check"]
+    Agg --> Route{"Route"}
+    Route -- "agree" --> Presiding["Presiding judge"]
+    Presiding --> Publish["Publish<br/>SHA-256"]
+    Publish --> Settle["Settle<br/>RESOLVE → RELEASE"]
+    Route -- "spread > 30 pts<br/>or swap flips" --> Escalate["Escalate"]
+  end
+  Human["Human reviewer<br/>/reviews"]
+  UI --> API
+  Cases --> SFN
+  Escalate --> Human
+  Human --> Reviews
+  Reviews -- "settle + publish" --> Ledger
+  Judges -. "Converse + Guardrails" .- Bedrock[("Amazon Bedrock")]
+  Settle --> Ledger[("DynamoDB<br/>hash-chained ledger")]
+  Publish --> Bucket[("S3 + CloudFront<br/>published rulings")]
+  Rulings --> Bucket
+  Rulings --> Ledger
+```
+
+**Bias controls:**
+- Judges never see names, countries or platforms.
+- Every judge output is validated against a JSON schema, and findings without an evidence ID are dropped.
+- The swap test reruns every judge with the parties mirrored.
+- A panel spread above 30 points, or a swap test that flips the winner, sends the case to a human instead of publishing.
+
+## Measured cost per case
+
+These figures come from the Rulings records on the live stack (LOG.md phase 21):
+
+| Rulings measured | Median | Mean | Range |
+|---|---|---|---|
+| 13 | $0.0261 | $0.0294 | $0.0245 to $0.0419 |
+
+That is about 12 Bedrock calls and 9,000 to 15,000 tokens per case, against the PRD's target of under $1. Total AWS spend for the project at the time of measurement was $1.15.
+
+## Bias and accuracy, reported honestly
+
+- **Benchmark results: unmeasured, and that's stated.** [`bench/RESULTS.md`](./bench/RESULTS.md) marks every PRD section 9 metric (agreement with gold, escalation on ambiguous cases, swap-test flip rate) as **UNMEASURED**. Since 2026-09-29, Bedrock model access has been blocked at the account level ("Error 002"), so no panel could run. The one result it confirms live is the failure path: a failed run publishes the labelled fallback and leaves the escrow untouched.
+- **Live tribunal status:** until model access is restored, every **Run demo case** ends in that fallback. The site says so plainly rather than showing a fake ruling.
+- **Last measured live (2026-09-28, before the block):** the three hand-written demo cases were run on the live stack against gold labels fixed beforehand (LOG.md phase 16):
+  - **Case A:** matched at 100%.
+  - **Case B:** matched at 0%, but only after a swap-test prompt fix. Before the fix it escalated twice.
+  - **Case C:** a genuine split; it escalated, as designed.
+- **Known weaknesses:**
+  - Run-to-run variance, mostly from the Nova judge. About 40% of demo runs have escalated.
+  - A median-blind panel swap check.
+  - Positional bias under the mirrored-roles prompt.
+- Details and the full table are in [`docs/submission/builder-center.md`](./docs/submission/builder-center.md).
+
+## Synthetic data
+
+Every contract, chat log, invoice, party and benchmark case in this repo and on the live site was written for testing. No real people, businesses or disputes are used. Panch is arbitration by consent on **simulated** funds, and nothing here is legal advice.
+
+## Limitations
+
+The site's [Limitations page](https://main.d1hm3x5hny8fjb.amplifyapp.com/limitations/) lists the known gaps in plain language:
+- the escrow is simulated;
+- there is no appeal window;
+- a silent respondent is not timed out;
+- any signed-in account can review;
+- judges vary from run to run;
+- the swap test has blind spots;
+- cases have no written summary field.
+
+Security notes are in [`docs/SECURITY.md`](./docs/SECURITY.md).
+
+## Development process and the coding agent
+
+- **Specs and contracts:** the work followed the PRD and TRD, with frozen contracts in `services/shared` between three lanes (see [`docs/TEAM_PLAN.md`](./docs/TEAM_PLAN.md)).
+- **Pull requests:** everything landed through PRs from the repo template, each with tests, `cdk synth` and a dev-log entry.
+- **The dev log:** [`docs/dev-process/LOG.md`](./docs/dev-process/LOG.md) records each phase: what was built, **what the coding agent did**, the checks run, the bugs found live, and what was deliberately left open.
+- **The coding agents** (Claude Code, and Codebuff for some tribunal work) worked through the team's AWS SSO profile:
+  - they built and deployed the CDK stacks;
+  - they wrote the API, tribunal and frontend code and tests;
+  - they ran the live verification passes that caught bugs only visible on the deployed stack. Examples: double settlement, a swap-test prompt that flagged unanimous panels, an IAM grant on the wrong ARN, and a fallback shown as if it were a ruling.
+- **Proof** of the agent connected to AWS: [`docs/dev-process/proof/`](./docs/dev-process/proof/). Today it holds one screenshot of the SSO identity check; the agent-session screenshots and the screen recording are still to be added (LOG.md phase 24).
+
+## Setup from a clean checkout
+
+You need Node.js 20 (`.nvmrc`). AWS access is only needed to deploy, not to build or test.
+
+```bash
+git clone https://github.com/ArshvirSk/PANCH.git && cd PANCH
+nvm use                      # Node 20
+npm ci                       # all workspaces
+npm run lint
+npm run typecheck
+npm test                     # api, tribunal, shared and web suites
+npm run synth                # CDK synth of all six stacks, no AWS credentials needed
+
+# Frontend against the live API
+cp web/.env.example web/.env.local   # API URL, Cognito pool ID and app client ID
+npm run dev --workspace=web          # http://localhost:3000
+```
+
+**Deploying** needs the `panch` SSO profile (`aws sso login --profile panch`, account `890742603792`, `us-east-1`), and goes through `scripts/require-deploy-lock.sh`. See [`docs/DEV_SETUP.md`](./docs/DEV_SETUP.md).
+
+---
+
+## Team notes
+
+### 📚 Essential Reading
 Before writing any code or prompting your agents, please ensure they read these specs:
 - [`AGENTS.md`](./AGENTS.md) - The master ruleset for all AI agents working on this repo.
 - [`docs/Panch_PRD.md`](./docs/Panch_PRD.md) - Product requirements and feature scope.
@@ -106,13 +249,14 @@ The `web/` app covers everything above. It is a Next.js static export, hosted by
 
 | Page | Login | What it does |
 |---|---|---|
-| `/` | No | Landing page, **Run demo case** (`POST /demo/run`), API health in the footer (`GET /health`) |
+| `/` | No | Landing page, **Run demo case** (`POST /demo/run`) with the live tribunal timeline (public `GET /cases/{id}` for demo cases), API health in the footer (`GET /health`) |
 | `/login/` | No | Sign in, create account (email), confirm the emailed code. Uses `USER_PASSWORD_AUTH`, the only flow the Cognito app client enables |
 | `/cases/` | Yes | Cases opened on this device (the API has no list route yet), with statuses refreshed from the API; open a case by ID or pasted link |
 | `/cases/new/` | Yes | Create a case as claimant (`POST /cases`) |
 | `/case/?id=` | Yes | Fund as respondent, dispute, upload evidence (drag and drop, presigned S3 PUT), submit, live polling while deliberating, ledger receipts. Fund, dispute and submit ask for confirmation |
-| `/ruling/?id=` | No | Public ruling as a formal award: split, confidence, reasoning, cited findings, clauses (`GET /rulings/{id}`) |
+| `/ruling/?id=` | No | Public ruling as a formal award: split, confidence, reasoning (model markdown rendered safely), cited findings, clauses (`GET /rulings/{id}`), and **Verify ruling** (`GET /rulings/{id}/verify`: content hash and ledger chain, failures shown with the server's reason). Human-reviewed rulings say a reviewer decided; a failed demo's cached fallback is labelled *not a ruling* and shows no award |
 | `/reviews/` | Yes | Human review queue for escalated cases: summary, amount, the three judges side by side, spread, swap test, and a form to settle the case (`GET /reviews`, `POST /reviews/{caseId}`) |
+| `/limitations/` | No | Known gaps in plain language, linked from the footer |
 
 Every protected call sends the Cognito ID token in `Authorization`. Roles come from the case: the claimant is the creator's Cognito `sub`, and the respondent is the account whose email matches `respondentEmail`.
 
@@ -144,10 +288,11 @@ Every protected call sends the Cognito ID token in `Authorization`. Roles come f
 - The site sends a CSP and other security headers from `web/security-headers.json`, applied by `WebStack`.
 
 **Tests:**
-- `npm run test --workspace=web` runs 409 unit and component tests (Vitest, Testing Library, jsdom). They cover:
+- `npm run test --workspace=web` runs 476 unit and component tests (Vitest, Testing Library, jsdom). They cover:
   - every case status for each role;
   - the dialogs, polling, uploads and login;
   - every accepted review-queue shape, the swap-test maths and the review form;
+  - the live response shapes: `currentStage` mapped onto the timeline, `/verify`, the cached fallback, the demo daily cap;
   - hostile input.
 - Two browser suites pass in Chrome and Edge: 95 checks for the case flow and 65 for the review queue. They live outside the repo; see `docs/dev-process/LOG.md`. They cover:
   - accessibility (axe, WCAG 2.1 AA, light and dark) and keyboard use;
@@ -161,14 +306,7 @@ npm run dev --workspace=web          # http://localhost:3000
 npm run build --workspace=web        # static site in web/out
 ```
 
-**Before the deployed site works end to end, run one `cdk deploy --all` from branch `p/feat/web-frontend` (Arshvir):**
-- API CORS allows the Amplify origin (today only `http://localhost:3000` passes preflight), and API Gateway 401s carry CORS headers.
-- The evidence bucket gets a PUT CORS rule. Without it, browsers cannot upload to the presigned URL.
-- The Amplify app gets `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USER_POOL_ID` and `NEXT_PUBLIC_USER_POOL_CLIENT_ID` from the stacks. Builds use `/amplify.yml`.
-- `GET /rulings/c-104` returns the fixture ruling instead of an empty body.
-- The Amplify app serves the security headers (CSP, HSTS, frame and MIME-sniffing protection).
-
-After the deploy, merging to `main` triggers the Amplify build. The site URL is the `PanchWebStack.WebUrl` output.
+**Deploying:** Arshvir deploys after merging to `main`; the Amplify build of `main` publishes the site (`PanchWebStack.WebUrl`, today https://main.d1hm3x5hny8fjb.amplifyapp.com). The Amplify app gets `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USER_POOL_ID` and `NEXT_PUBLIC_USER_POOL_CLIENT_ID` from the stacks and builds with `/amplify.yml`.
 
 ---
 

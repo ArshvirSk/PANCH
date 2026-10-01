@@ -61,3 +61,8 @@ export function normalizeEmail(email: string): string {
 export function isValidEmail(email: string): boolean {
   return EMAIL_PATTERN.test(email.trim());
 }
+
+/** Models write clauseRef as "3.1" or as "Clause 3.1"; show one "Clause" either way. */
+export function clauseLabel(ref: string): string {
+  return /^\s*(clause|section|§)/i.test(ref) ? ref.trim() : `Clause ${ref.trim()}`;
+}

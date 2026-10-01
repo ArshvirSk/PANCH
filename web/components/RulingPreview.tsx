@@ -6,14 +6,14 @@ const JUDGES = [
   { name: 'Judge III', before: 100, after: 100 },
 ];
 
-/** Hero illustration: how a panel converges on an award. Figures mirror the sample case c-104. */
+/** Hero illustration: how a panel converges on an award. Illustrative figures, not a real case. */
 export function RulingPreview() {
   return (
     <figure className="preview" aria-label="Illustrative example of a Panch panel ruling">
       <div className="preview-head">
         <span className="preview-case">
           <Icon name="scale" size={16} />
-          Case c-104 · Non-payment
+          Example case · Non-payment
         </span>
         <span className="preview-tag">Example</span>
       </div>

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ApiStatus } from './ApiStatus';
 import { Logo } from './Logo';
+import { SAMPLE_RULING_HREF } from '../lib/samples';
 
 export function Footer() {
   return (
@@ -14,7 +15,8 @@ export function Footer() {
           <p className="footer-heading">Product</p>
           <Link href="/#how">How it works</Link>
           <Link href="/#demo">Run the demo</Link>
-          <Link href="/ruling/?id=c-104">Sample ruling</Link>
+          <Link href={SAMPLE_RULING_HREF}>Sample ruling</Link>
+          <Link href="/limitations/">Limitations</Link>
         </nav>
         <nav className="footer-links" aria-label="Account">
           <p className="footer-heading">Account</p>

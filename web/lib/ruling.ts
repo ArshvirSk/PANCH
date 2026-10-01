@@ -41,5 +41,7 @@ export function parseRuling(body: unknown): Ruling | null {
     uncertainties: isStringArray(r.uncertainties) ? r.uncertainties : [],
     // POST /reviews publishes the reviewer's decision with a fixed confidence of 1 and no findings.
     ...(r.humanReviewed === true ? { humanReviewed: true } : {}),
+    // A failed demo run serves a cached body (failHandler.ts): zeroed award, no findings, escrow untouched.
+    ...(r.fallback === true ? { fallback: true } : {}),
   };
 }

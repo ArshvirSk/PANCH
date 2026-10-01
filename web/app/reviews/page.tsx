@@ -22,6 +22,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { Icon } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
 import { PageHeader } from '../../components/PageHeader';
+import { RichText } from '../../components/RichText';
 import { RequireAuth } from '../../components/RequireAuth';
 import { PageSkeleton } from '../../components/Skeleton';
 import { ButtonSpinner, Spinner } from '../../components/Spinner';
@@ -104,7 +105,7 @@ function JudgeColumn({ judge, swap }: { judge: PanelJudge; swap: PanelJudge | un
             {r.payeeShareBps < 10000 && <span className="split-respondent" style={{ width: `${(10000 - r.payeeShareBps) / 100}%` }} />}
           </div>
           <SwapLine original={r} swap={swap} />
-          <p className="judge-reasoning">{r.reasoning}</p>
+          <RichText className="judge-reasoning" text={r.reasoning} />
           <details className="judge-more">
             <summary>Findings ({r.findingsOfFact.length})</summary>
             {r.findingsOfFact.length === 0 ? (
