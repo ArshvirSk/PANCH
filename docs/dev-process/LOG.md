@@ -713,3 +713,66 @@ FailLambda direct-invocation variant of the catch path was not re-exercised
 bench/RESULTS.md ships as a skeleton with the confirmed result and an
 explicit UNMEASURED section. Nothing deployed; no /infra, WorkflowStack, or
 services/shared changes; no SSM edits.
+
+## Phase 24 — submission polish: live-data pass, failure UX, limitations, a11y, README and submission docs (Piyush/agent, branch `p/docs/submission-polish`, 2026-10-01)
+This branch was built on PR #17 (`p/fix/reviews-real-data`, since merged) and rebased on `main` after phase 23. `bench/RESULTS.md` landed in phase 23 with every PRD section 9 metric marked UNMEASURED because of the Bedrock block, so the submission docs report it that way. Every check below used real data: this branch's build pointed at the production API, plus the deployed site where stated. Rutu's Cases A/B/C were already seeded and validated (phase 16), so they were used as they are: `demo-ba-a-354484`, `demo-ba-bfix-45a736`, `demo-ba-c-d3ec86`.
+
+**Live-data pass:**
+- **Two real `/demo/run` runs, one logged out and one signed in.** Both were followed on the new live timeline. Both FAILED about 60 s in, during the judges stage (API: `DELIBERATING/Judge3/RUNNING → FAILED`). The UI handled it correctly: "The tribunal could not finish this run … escrow is untouched", then the labelled fallback. The cases are `demo-7b7088b0` and `demo-ef35bc31`.
+- **Ruling pages at 1280 px and 390 px, no horizontal overflow:**
+  - Case A, `demo-verify-000134` and `demo-9bfae5c6`: real long reasoning; Verify reports *Verified*.
+  - B and C: labelled fallback.
+  - `c-c3ab6359`: human ruling; Verify reports *Not verified* with the ledger reason.
+- **Review queue:** 8 cases including Case C (judges 50% / 70% / 0.8%), judge markdown rendered, no overflow at either width.
+- **Stuck case:** `demo-e961fd80` (DELIBERATING, run SUCCEEDED) shows its notice, and the page stops polling (0 requests in 12 s).
+
+**Fixed in `web/` (each with a regression test; web tests 414 → 476):**
+1. **The timeline never advanced.** `GET /cases/{id}` sends `currentStage`, the last state entered (`Judge2`, `CrossExamJudge1`, `SwapTestJudge3`, …), not the `timeline` array the UI read. It is now mapped onto stages, covering every WorkflowStack state name.
+2. **A logged-out "Run demo case" showed no progress.** It only linked to a ruling page that 404s mid-run, and the case page needs sign-in. The demo panel now follows the run itself, using the public demo-case read. It ends in *ruled* (with a link), *sent to human review*, *failed* (labelled fallback) or *ended without an outcome*, and stops after 10 minutes.
+3. **A run that ended while the case still read DELIBERATING was polled forever.** It now stops, and the page says what happened.
+4. **The cached fallback was shown as a real award.** It read "Claim dismissed in full · Respondent receives 100%", with a confidence meter. It now gets its own page, "Cached fallback · not a ruling": no award, no meter, no verify.
+5. **"Verify ruling" (PRD F8, P0) did not exist.** It now calls `/rulings/{id}/verify` and shows content-hash and ledger-chain results per entry, including failures with the server's reason. A 404 shows as "nothing to verify yet".
+6. **Model markdown appeared as raw `**`.** It is now rendered safely: bold, code, headings and paragraphs, as React elements only. Unbalanced or hostile markup stays plain text.
+7. **"Clause Clause 3.1".** Models send `clauseRef` with the word "Clause" already in it, so it is no longer prefixed twice.
+8. **The demo daily cap showed the generic throttling text.** The API's own message ("Daily demo limit reached. Try again tomorrow.") is now shown; API Gateway throttling keeps the generic text.
+9. **Every "Sample ruling" link 404'd live.** `c-104` only existed in the old API stub. The links now go to Case A, which is verified live.
+10. **Human rulings showed a bare "No findings…".** Their empty findings and clauses now explain that the reviewer decided from the panel record.
+11. **Long unbroken tokens** (hashes, `e-1#ARTIFACT_2`) now wrap.
+
+**Added:**
+- the `/limitations/` page, linked from the footer;
+- `docs/submission/demo-script.md`;
+- `docs/submission/builder-center.md`;
+- the README submission pass: live URL, a 30-second explanation, a Mermaid architecture diagram (checked to render), measured cost, honest bias results, a synthetic-data statement, process and agent sections, and setup from a clean checkout.
+
+**Accessibility (axe-core 4.13, WCAG 2.1 A/AA, light and dark):**
+- **Deployed site** (`main.d1hm3x5hny8fjb.amplifyapp.com`): landing, login, ruling, case (signed in) and reviews (signed in). 10 scans, **0 violations**.
+- **This branch**, which adds the verify panel open, the cached fallback and limitations: 14 scans, **0 violations**.
+- **Demo-progress card** in the running, settled and failed states: 6 scans, **0 violations**.
+- Nothing fell below AA, so no a11y fix was needed.
+
+**Lighthouse 12, mobile, deployed landing page:**
+
+| Performance | Accessibility | Best Practices | SEO | FCP | LCP | TBT | CLS |
+|---|---|---|---|---|---|---|---|
+| 94 | 100 | 100 | 100 | 1.4 s | 2.4 s | 240 ms | 0.017 |
+
+A run against the local branch server isn't comparable: it serves without compression or HTTPS.
+
+**Backend issues for Arshvir (and Rutu for intake), reported, not worked around:**
+1. **Every live `/demo/run` failed today** (2 of 2, about 60 s, during JUDGES). This is the ship gate's one-click demo. Rutu's phase 23 (merged while this branch was open) found the cause: an account-level Bedrock block ("Error 002: Access to Bedrock models is not allowed for this account"), not code. The three judge models need re-enabling for account 890742603792. Until then, every live run ends in the labelled fallback.
+2. **`failHandler` overwrote a real, settled ruling with the fallback.** `demo-ba-bfix-45a736` settled at 0 bps with a verified ruling. A later failed re-run then copied the demo fallback over `panch-rulings/{id}/ruling.json`. That copy is unconditional for `demo-*` cases, and the body also carries the real run's token counts. `/verify` now reports a content mismatch. The case C fallback was copied the same way while the case is ESCALATED.
+3. **`/verify` fails for every case that is funded and disputed** (phase 22): `cases.ts` writes DISPUTE with `prevHash: 'GENESIS'`.
+4. **`intake.ts` is a stub.** It always points the judges at `extracted/e-1.txt`, which only the demo and bench seeding write. Evidence a party uploads in the UI never reaches the judges (PRD F4).
+5. **`GET /cases/{id}` reads only the first 100 execution-history events** (`maxResults: 100`, oldest first), so `currentStage` can stop advancing on long runs. `reverseOrder: true` with a small limit would give the latest state.
+6. **`demo-e961fd80` is stuck at DELIBERATING** although its run SUCCEEDED (an orphaned row from before ESCALATE existed).
+7. **`docs/SECURITY.md` "Known gaps" still has an `evidenceDeadline` "enforced nowhere" bullet,** which contradicts its own "Landed since" section (phase 18).
+
+**Coding-agent proof (PRD section 5), what is missing:**
+- `docs/dev-process/proof/` holds one screenshot (`image.png`) of `aws sts get-caller-identity` in a terminal, as the `PanchAdmin` SSO role.
+- **No screenshot** shows the coding agent itself connected to AWS.
+- **No screenshot** shows the agent building resources (for example a `cdk deploy` run by the agent).
+- **There is no screen recording,** which the PRD requires.
+- None of these were created here.
+
+**Checks run:** web tests 476, lint, typecheck, `next build`; the live browser passes above; axe; Lighthouse.

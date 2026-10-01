@@ -51,7 +51,7 @@ const LIMITATIONS: { title: string; body: string }[] = [
   },
   {
     title: 'Failed demo runs show a cached fallback',
-    body: 'If the tribunal cannot finish a demo run, the ruling page shows a pre-written fallback, labelled as such. It is not a ruling, awards nothing and never touches the escrow.',
+    body: 'If the tribunal cannot finish a demo run, the ruling page shows a pre-written fallback, labelled as such. It is not a ruling, awards nothing and never touches the escrow. Since 29 September 2026, Amazon Bedrock model access has been blocked on the project\'s AWS account, so every live run ends this way until it is restored. The published rulings from earlier runs are real.',
   },
   {
     title: 'All data is synthetic',
