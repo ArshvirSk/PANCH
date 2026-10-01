@@ -549,56 +549,7 @@ pointer to verify-access.sh. No other docs/ edits.
 deleted after each run); tsc/eslint/tests untouched by this change (script
 + docs only, no runtime code); no deploy required.
 
-## Phase 21 - final validation: catch-path fallback confirmed live; everything Bedrock blocked by account-level Error 002 (Rutu, branch `r/feat/final-validation`, 2026-09-29)
-
-Goal was the remaining validation gaps: live presiding raw-response artifact,
-3x runs of cases A/B/C vs the PRD § 9 metrics, live prompt-injection probe,
-and catch-path fallback confirmation, with bench/RESULTS.md + Known
-limitations to close out. Two items got done end to end; everything that
-needs Bedrock is blocked (details below - exact error, what changed since
-2026-09-28, and what Arshvir needs to unblock).
-
-**Infra access repaired and re-verified (14/18 PASS).** AWS CLI v2.37.5
-installed (approved elevation); SSO login completed through the Identity
-Center portal. Discovery worth logging: the portal at
-https://d-9f6758d40c.awsapps.com/start/ is region **ap-south-1**, not
-us-east-1 - every login attempt from another region failed with
-InvalidRequestException before a parallel sweep of all regions found it.
-`~/.aws/config` profile `panch` now carries sso_region ap-south-1 with
-session region us-east-1; `sts get-caller-identity` succeeds as
-`assumed-role/AWSReservedSSO_PanchAdmin_.../Rutu`. verify-access.sh:
-STS, all 6 SSM keys, evidence-bucket S3 round-trip, and all 4 Step Functions
-checks PASS; the only FAILs are the 4 Bedrock Converse pings (see below).
-Also found while validating: the `/panch/data/tables/*` SSM params referenced
-in docs do not exist in this account (ParamNotFound); table names are only
-discoverable via list-tables (e.g. `PanchDataStack-Cases80582F3E-GXFZ9LQ0VP10`)
-- the bucket params under `/panch/data/buckets/*` do exist.
-
-**Catch-path fallback CONFIRMED LIVE end to end (organic, via the real state
-machine).** Seeded `demo-r17-b-ee3bff` (case-b fixture, DELIBERATING per the
-Phase 16 ledger guard, single e-1 artifact + fallback at the seeded keys),
-started the execution through the real CLI one-liner: it FAILED in ~25s at
-JUDGES on the Bedrock block below, Catch routed to FailLambda, and the
-fallback landed at `panch-rulings/demo-r17-b-ee3bff/ruling.json`. Verified:
-`fallbackCopyIdentical: true` (published bytes == seeded fixture bytes),
-ledger untouched (0 events, escrow state unchanged), case row FAILED, and
-the **public CloudFront check now passes too** - HTTP 200 from
-d1a3grqm50ahjl.cloudfront.net with bytes hash-identical to the S3 origin
-object. This closes the fallback side of Phase 15 "to finish when credentialed".
-
-**Bedrock is the hard blocker: `ValidationException: Error 002: Access to
-Bedrock models is not allowed for this account`** on every invocation
-(amazon.nova-pro-v1:0, mistral.mistral-large-3-675b-instruct,
-us.meta.llama3-3-70b-instruct-v1:0). This is account-level model enablement
-- the control plane is fine (list-foundation-models works), so it is not IAM
-and not code. Models ran fine through Phase 20 on 2026-09-28 (its LOG entry
-records a SUCCEEDED case run); the break happened after that, so something
-changed on the account side (the console now shows no enabled models / the
-Bedrock endpoint was changed). Arshvir: please re-enable the three models in
-Bedrock model access; until then the live presiding artifact, the 3x A/B/C
-benchmark runs, and the injection probe cannot run - per task rules I did not
-work around this. Consequence: PRD § 9 rows "agreement with gold on clear
-cases >85## Phase 21 - final validation: catch-path fallback confirmed live; everything Bedrock blocked by account-level Error 002 (Rutu, branch `r/feat/final-validation`, 2026-09-29)
+## Phase 22 - final validation: catch-path fallback confirmed live; everything Bedrock blocked by account-level Error 002 (Rutu, branch `r/feat/final-validation`, 2026-09-29)
 
 Goal was the remaining validation gaps: live presiding raw-response artifact,
 3x runs of cases A/B/C vs the PRD section 9 metrics, live prompt-injection
