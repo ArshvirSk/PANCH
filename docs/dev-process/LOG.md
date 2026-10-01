@@ -713,3 +713,55 @@ FailLambda direct-invocation variant of the catch path was not re-exercised
 bench/RESULTS.md ships as a skeleton with the confirmed result and an
 explicit UNMEASURED section. Nothing deployed; no /infra, WorkflowStack, or
 services/shared changes; no SSM edits.
+
+## Phase 24 - merge day + Error 002 root-cause diagnosis and support escalation (Buffy/agent, on main, 2026-10-01)
+
+Session spanned three things: landing the two open PRs, diagnosing the
+Bedrock block down to a definitive answer, and escalating it.
+
+**Merges.** PR #17 (reviews/ruling against the real API) merged clean. PR #16
+(final-validation results) conflicted in this LOG only - both sides appended
+sections at the same anchor, plus commit 875fd4e had landed this entry twice
+with a mid-sentence splice (`cases >85## Phase 21 ...`). Resolved by deduping
+the branch entry and renumbering it Phase 23 (main already had 21 and 22);
+merged origin/main into the branch, pushed, GitHub reported MERGEABLE/CLEAN,
+user merged. Also found and reported a backend bug from PR #17's log entry:
+`services/api/cases.ts:67` writes DISPUTE with `prevHash: 'GENESIS'` instead
+of chaining onto the FUND hash, so `/verify` fails on every real (non-demo)
+- still open.
+
+**Error 002 - definitive diagnosis (all verified live this session):**
+- All 3 project models blocked in us-east-1/us-west-2/eu-central-1/ap-south-1
+  and via cross-region inference profiles. 15+ other models swept: every
+  AVAILABLE model blocked (incl. embeddings), EOL models return a different
+  error - catalog reachable, invocation denied account-wide.
+- Not SCP (FullAWSAccess exists but has ZERO attachment targets), not
+  AI-services opt-out (none exist), not permission boundary (none), not IAM,
+  not region, not billing ($1.72 fine). Account ACTIVE, org o-az0i912dms
+  management account, created 2026-09-25.
+- Bedrock console "Model access" page is RETIRED (auto-enable on first
+  invocation) - no toggle exists to fix this. `put-use-case-for-model-access`
+  returns 200 but does not persist (vestigial). The stored use-case form was
+  placeholder junk (companyName "None", website "www.none.com", industry
+  Gaming, use case ". Creating an llm for gamers"); replaced with a truthful
+  Panch description anyway - no effect, as expected (API does not persist).
+- Public re:Post threads (Apr-Sep 2026) confirm this exact signature: sudden
+  account-level Bedrock suspension, all other services fine, anti-fraud /
+  account-review block, NO self-service step, only the Account Reinstatement
+  support queue lifts it. Community timelines: 1 day - 2 weeks.
+- Support case 179071266600753 (opened 09-29 as "General question") sat
+  Unassigned 2 days; replied 2026-10-01 requesting re-categorization to
+  Account Reinstatement with the full evidence set.
+
+**Live ship-gate probe (also 2026-10-01):** `POST /demo/run` still works
+logged-out end to end - case `demo-ec9d0d3f` started, FAILED at JUDGES in
+~20s on Error 002, Catch published the seeded fallback, CloudFront served it
+HTTP 200 at `/panch-rulings/demo-ec9d0d3f/ruling.json`. Public URL and demo
+survive the block by design; the ruling honestly says deliberation did not
+complete (user decision: keep this honest fallback, no outage-banner
+change). 414/414 web tests green on main post-merge. No code deployed.
+
+**Submission posture if the block persists past 2026-10-02:** RESULTS.md
+UNMEASURED rows stand as written (last-known-good 09-28 numbers labeled as
+such), catch-path fallback is the one fully-verified PRD-relevant result,
+and the reinstatement case ID is the follow-up hook.
