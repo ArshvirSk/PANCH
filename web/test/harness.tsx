@@ -36,6 +36,7 @@ export function mockApi(overrides: Partial<Record<keyof ApiClient, unknown>> = {
     uploadToPresignedUrl: vi.fn(),
     submitCase: vi.fn(),
     getRuling: vi.fn(),
+    listRulings: vi.fn().mockResolvedValue([]),
     getDemoCase: vi.fn(),
     verifyRuling: vi.fn().mockResolvedValue(null),
     getReviews: vi.fn(),

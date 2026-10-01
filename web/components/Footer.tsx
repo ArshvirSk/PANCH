@@ -16,6 +16,7 @@ export function Footer() {
           <Link href="/#how">How it works</Link>
           <Link href="/#demo">Run the demo</Link>
           <Link href={SAMPLE_RULING_HREF}>Sample ruling</Link>
+          <Link href="/rulings/">Published rulings</Link>
           <Link href="/limitations/">Limitations</Link>
         </nav>
         <nav className="footer-links" aria-label="Account">

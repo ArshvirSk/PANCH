@@ -827,3 +827,78 @@ change). 414/414 web tests green on main post-merge. No code deployed.
 UNMEASURED rows stand as written (last-known-good 09-28 numbers labeled as
 such), catch-path fallback is the one fully-verified PRD-relevant result,
 and the reinstatement case ID is the follow-up hook.
+
+## Phase 26 - ship-gate gaps closed: public ruling gallery + three live-data fixes (Buffy/agent, branch `a/fix/ship-gate-gaps`, 2026-10-02)
+
+Audited the PRD, TRD and TEAM_PLAN against what is actually deployed and fixed
+the four gaps that were cheap, non-Bedrock and could be verified today. No
+deploy from this session: the gallery reaches the live site with the Amplify
+build of `main` after the merge.
+
+**1. The ruling gallery existed in the API but had no page (PRD section 5
+ship gate).** The gate requires landing page, ruling gallery and `/demo/run`
+to work logged out. `GET /rulings` has answered 200 with published rows for
+weeks, but `web/app` had no route for it, so a judge following the gate found
+nothing.
+- New `/rulings/` page (`app/rulings/page.tsx` + `components/RulingsGallery.tsx`),
+  public, with metadata: every published ruling newest first, each row showing
+  case ID, award, decider (panel or human), published time, panel spread and
+  cost where recorded, linking to `/ruling/?id=`.
+- New `api.listRulings()` in `web/lib/api.ts`: public, no token, drops rows
+  without a case ID instead of rendering a broken link; a non-array answer is
+  a 502, not an empty gallery.
+- Linked from the header ("Rulings") and the footer ("Published rulings"), so
+  the gallery is reachable from every page without a login.
+- Live check before the change: `GET /prod/rulings` returns 18 published rows.
+
+**2. `/verify` failed for every case funded and disputed through the API**
+(phases 22 and 25, item 3 of phase 24). `cases.ts` wrote both FUND and DISPUTE
+with `prevHash: 'GENESIS'` at seq 1 and 2, so DISPUTE claimed to follow genesis
+while the FUND entry already existed - the recompute in `verifyRuling` then
+failed its link check.
+- New `readLedgerHead(caseId)` in `services/shared/ledger.ts` (query the tip,
+  return `seq + 1` and its `entryHash`; genesis is the 64-zero hash) now feeds
+  both handlers. `settle.ts` and `reviews.ts` already chained this way, so the
+  three writers now agree.
+- Existing `isGenesis` accepts both conventions, so already-published rows are
+  unaffected: they still report what they report, honestly.
+- New `services/api/tests/ledgerChain.test.ts` (4 tests) covers the fresh
+  chain, DISPUTE linking onto FUND, a verifier-style recompute of both entries,
+  and FUND continuing a non-empty chain.
+
+**3. A failed re-run overwrote a real published ruling** (phase 24, item 2).
+`failHandler.ts` copied the seeded fallback over `panch-rulings/{id}/ruling.json`
+unconditionally for any `demo-*` case, which destroyed a verified award and
+made `/verify` report a content mismatch.
+- The copy is now gated on a `HeadObject`: no object present means the seed
+copy is correct; an object present means a ruling is published and is left
+alone; any other HEAD result (403, network) skips the copy rather than risk
+replacing something we could not check. The FAILED status write still happens
+first and unconditionally.
+- New `services/tribunal/tests/failHandler.test.ts` (4 tests): copies when
+absent, does not copy when present, does not copy when the check fails, and
+touches no object for non-demo cases.
+
+**4. The live timeline stopped advancing on long runs** (phase 24, item 5).
+`GET /cases/{id}` read execution history oldest-first with `maxResults: 100`,
+so `currentStage` froze once a run passed 100 events. It now reads
+`reverseOrder: true` and takes the first `TaskStateEntered`, i.e. the state the
+execution is actually in.
+
+**Docs kept in step:** `docs/SECURITY.md`'s stale "evidenceDeadline enforced
+nowhere" bullet now states what Phase 18 actually enforces and keeps the real
+residual gap (no status check on the evidence presign); the limitations page
+drops "that bug is being fixed" for the ledger (it is fixed here) and states
+that a failed re-run never replaces a published ruling; README gains the
+gallery in the Try-it table and the page table.
+
+**Checks:** `npm test` - api 40, tribunal 21, shared 13, web 481 (476 + 5 new);
+`eslint .` clean; `npm run typecheck` clean (tsc + next typegen/tsc).
+
+**Still open (unchanged, mostly Bedrock-gated or larger):** Error 002 and the
+PRD section 9 metrics behind it; `intake.ts` is still a stub so UI-uploaded
+evidence never reaches the judges (F4); no benchmark generator/runner and no
+`GET /bench/summary` (F11); no SES (F13), no appeal window (F14), no
+`POST /cases/{id}/respond`, cross-exam still runs one round while the SSM
+parameter says 2; `demo-e961fd80` still stuck DELIBERATING; PRD section 5
+coding-agent proof (two screenshots and the recording) still to be captured.

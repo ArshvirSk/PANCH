@@ -701,6 +701,13 @@ textarea:disabled { opacity: 0.6; }
 
 /* ---------- Limitations ---------- */
 .limitations { list-style: none; display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+
+/* Public ruling gallery (/rulings) */
+.ruling-grid { list-style: none; display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.ruling-card { display: flex; flex-direction: column; gap: 0.55rem; }
+.ruling-card-id { color: var(--text); text-decoration: none; font-weight: 650; overflow-wrap: anywhere; }
+.ruling-card-id:hover { color: var(--primary-text); text-decoration: underline; }
+.ruling-card-award { margin: 0; font-weight: 600; }
 .limitation h2 { display: flex; gap: 0.45rem; align-items: baseline; margin-bottom: 0.5rem; }
 .limitation p { color: var(--text-2); }
 

@@ -1,5 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { CaseStatus, LedgerEvent } from './types';
 import { computeEntryHash } from './hashing';
 
@@ -8,6 +8,39 @@ export const docClient = DynamoDBDocumentClient.from(ddbClient);
 
 const CASES_TABLE = process.env.CASES_TABLE || '';
 const LEDGER_TABLE = process.env.LEDGER_TABLE || '';
+
+/**
+ * The chain origin for the first entry of a case.
+ *
+ * Two conventions predate this constant and both remain readable by
+ * GET /rulings/{id}/verify (which accepts either): the literal 'GENESIS'
+ * written by the old fund/dispute handlers, and the 64-zero hash written by
+ * settle.ts for demo cases. New writes always use this zero hash so the
+ * recomputed chain starts from a value anyone can reproduce.
+ */
+export const LEDGER_GENESIS = '0'.repeat(64);
+
+/**
+ * Reads the tip of a case's hash chain: the seq and entryHash the next entry
+ * must link onto. Every writer needs this — without it a new entry claims to
+ * follow GENESIS while an earlier entry already exists, and the published
+ * chain no longer recomputes (the bug behind "verify fails for every case
+ * that was funded and disputed", LOG.md phase 22/25).
+ */
+export async function readLedgerHead(caseId: string): Promise<{ seq: number; prevHash: string }> {
+  const res = await docClient.send(new QueryCommand({
+    TableName: LEDGER_TABLE,
+    KeyConditionExpression: 'caseId = :c',
+    ExpressionAttributeValues: { ':c': caseId },
+    ScanIndexForward: false, // highest seq first
+    Limit: 1,
+  }));
+  const head = res.Items?.[0];
+  if (head && typeof head.seq === 'number' && typeof head.entryHash === 'string') {
+    return { seq: head.seq + 1, prevHash: head.entryHash };
+  }
+  return { seq: 1, prevHash: LEDGER_GENESIS };
+}
 
 export interface LedgerTransition {
   caseId: string;

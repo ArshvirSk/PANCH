@@ -51,6 +51,7 @@ export function Header() {
           <Link href="/#how" className="nav-link">How it works</Link>
           <Link href="/#demo" className="nav-link">Demo</Link>
           <Link href={SAMPLE_RULING_HREF} className={`nav-link${pathname === '/ruling/' ? ' active' : ''}`}>Sample ruling</Link>
+          <Link href="/rulings/" className={`nav-link${pathname === '/rulings/' ? ' active' : ''}`}>Rulings</Link>
           {status === 'signedIn' && (
             <>
               <Link href="/cases/" className={`nav-link${isActive('/cases/') ? ' active' : ''}`}>My cases</Link>

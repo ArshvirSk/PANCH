@@ -20,8 +20,12 @@ vi.mock('@aws-sdk/client-dynamodb', () => ({
 }));
 
 vi.mock('@aws-sdk/client-s3', () => ({
-  S3Client: vi.fn(),
-  CopyObjectCommand: vi.fn()
+  S3Client: class {
+    // Nothing published for these fixtures, so failHandler takes the seed-copy path.
+    send = vi.fn().mockRejectedValue(Object.assign(new Error('NotFound'), { name: 'NotFound', $metadata: { httpStatusCode: 404 } }));
+  },
+  CopyObjectCommand: vi.fn(),
+  HeadObjectCommand: vi.fn()
 }));
 
 describe('Tribunal Stubs and API', () => {

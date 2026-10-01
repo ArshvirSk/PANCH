@@ -4,7 +4,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { PutCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { SFNClient, StartExecutionCommand, DescribeExecutionCommand, GetExecutionHistoryCommand } from '@aws-sdk/client-sfn';
-import { docClient, appendLedgerEntry, validateTransition, CaseStatus, LedgerEvent } from '../shared';
+import { docClient, appendLedgerEntry, readLedgerHead, validateTransition, CaseStatus, LedgerEvent } from '../shared';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
 const s3Client = new S3Client({});
@@ -53,7 +53,11 @@ export const fund = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxy
     const res = await docClient.send(new GetCommand({ TableName: CASES_TABLE, Key: { caseId } }));
     if (!res.Item) return respond(404, { error: 'Not found' });
     const newStatus = validateTransition(res.Item.status as CaseStatus, LedgerEvent.FUND);
-    const result = await appendLedgerEntry({ caseId, event: LedgerEvent.FUND, amountCents: res.Item.amountCents, expectedStatus: res.Item.status as CaseStatus, newStatus, seq: 1, prevHash: 'GENESIS' });
+    // seq and prevHash come from the chain itself: the first entry follows the
+    // genesis hash, and a later entry follows the tip. Guessing "GENESIS" here
+    // broke GET /rulings/{id}/verify for every case funded through this route.
+    const head = await readLedgerHead(caseId);
+    const result = await appendLedgerEntry({ caseId, event: LedgerEvent.FUND, amountCents: res.Item.amountCents, expectedStatus: res.Item.status as CaseStatus, newStatus, seq: head.seq, prevHash: head.prevHash });
     return respond(200, { success: true, newStatus, entryHash: result.entryHash });
   } catch (err: any) { return respond(400, { error: err.message }); }
 };
@@ -64,7 +68,8 @@ export const dispute = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const res = await docClient.send(new GetCommand({ TableName: CASES_TABLE, Key: { caseId } }));
     if (!res.Item) return respond(404, { error: 'Not found' });
     const newStatus = validateTransition(res.Item.status as CaseStatus, LedgerEvent.DISPUTE);
-    const result = await appendLedgerEntry({ caseId, event: LedgerEvent.DISPUTE, amountCents: res.Item.amountCents, expectedStatus: res.Item.status as CaseStatus, newStatus, seq: 2, prevHash: 'GENESIS' });
+    const head = await readLedgerHead(caseId);
+    const result = await appendLedgerEntry({ caseId, event: LedgerEvent.DISPUTE, amountCents: res.Item.amountCents, expectedStatus: res.Item.status as CaseStatus, newStatus, seq: head.seq, prevHash: head.prevHash });
     return respond(200, { success: true, newStatus, entryHash: result.entryHash });
   } catch (err: any) { return respond(400, { error: err.message }); }
 };
@@ -165,13 +170,17 @@ export const getCase = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const desc = await sfnClient.send(new DescribeExecutionCommand({ executionArn: caseItem.executionArn }));
         caseItem.executionStatus = desc.status;
         
-        // Fetch history to get stage
-        const hist = await sfnClient.send(new GetExecutionHistoryCommand({ executionArn: caseItem.executionArn, maxResults: 100 }));
+        // Fetch history to get stage. reverseOrder returns newest first, so the
+        // first TaskStateEntered in the page is the state the execution is in
+        // now — the old oldest-first read stopped advancing once a run passed
+        // 100 events (LOG.md phase 24, item 5).
+        const hist = await sfnClient.send(new GetExecutionHistoryCommand({ executionArn: caseItem.executionArn, maxResults: 100, reverseOrder: true }));
         let currentStage = 'PENDING';
         if (hist.events) {
           for (const ev of hist.events) {
             if (ev.type === 'TaskStateEntered' && ev.stateEnteredEventDetails) {
               currentStage = ev.stateEnteredEventDetails?.name ?? currentStage;
+              break;
             }
           }
         }

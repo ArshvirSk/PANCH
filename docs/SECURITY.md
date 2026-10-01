@@ -34,7 +34,7 @@ Scope: full IAM / bucket / encryption / secrets review of every stack (`infra/li
 
 ## Known gaps (honest list)
 
-- `evidenceDeadline` exists in the type but is enforced nowhere: evidence presigned URLs can be requested after submission. Mitigation/talking point: P1 hardening item; uploads after submission do not reach a live deliberation (intake snapshots evidence at submission), but the API should refuse them.
+- `evidenceDeadline` is enforced for the window (Phase 18: creation validates ISO 8601 and "in the future", evidence presigns past the deadline get a 403, and the hourly sweeper flags overdue cases) but **not for case status**: `POST /cases/{id}/evidence` can still be called after a case is DELIBERATING or settled. Mitigation: intake snapshots evidence at submission, so a late upload never reaches a live deliberation; the fix is a status check next to the deadline check.
 - No respondent-response timeout: a disputed case can sit in DELIBERATING… (in practice the tribunal does not wait on the respondent, so this is a UX/SLA gap, not a funds-safety one). Overdue cases are now flagged (`responseOverdue`) but deliberately not auto-adjudicated.
 - **The `panch-alarms` SNS topic has no email subscription** (found in the 2026-09-29 re-audit): the three alarms change state and publish to the topic, but nobody receives an email until a subscription is confirmed. One-time human step outside the repo.
 - Judge model outputs are schema-validated, but numeric range normalization (confidence > 1 → /100) is a pragmatic patch for model variance, not a guarantee; panels can still split (spread > 3000 bps escalates to human review by design).

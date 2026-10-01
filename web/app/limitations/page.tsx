@@ -47,11 +47,11 @@ const LIMITATIONS: { title: string; body: string }[] = [
   },
   {
     title: 'Some rulings cannot be fully verified yet',
-    body: 'Anyone can verify a ruling from its page, which recomputes the ruling\'s hash and the ledger chain. It reports a failure when it finds one rather than hiding it. Rulings published before hashing existed cannot be content-checked, and a known ledger bug currently makes verification fail for cases that were funded and disputed through the full flow. That bug is being fixed.',
+    body: 'Anyone can verify a ruling from its page, which recomputes the ruling\'s hash and the ledger chain. It reports a failure when it finds one rather than hiding it. Rulings published before hashing existed cannot be content-checked, and a ledger bug that broke the chain for cases funded and disputed through the full flow has been fixed — cases decided before the fix still fail verification and say so.',
   },
   {
     title: 'Failed demo runs show a cached fallback',
-    body: 'If the tribunal cannot finish a demo run, the ruling page shows a pre-written fallback, labelled as such. It is not a ruling, awards nothing and never touches the escrow. Since 29 September 2026, Amazon Bedrock model access has been blocked on the project\'s AWS account, so every live run ends this way until it is restored. The published rulings from earlier runs are real.',
+    body: 'If the tribunal cannot finish a demo run, the ruling page shows a pre-written fallback, labelled as such. It is not a ruling, awards nothing and never touches the escrow. Since 29 September 2026, Amazon Bedrock model access has been blocked on the project\'s AWS account, so every live run ends this way until it is restored. A failed re-run never replaces a ruling that was already published. The published rulings from earlier runs are real.',
   },
   {
     title: 'All data is synthetic',

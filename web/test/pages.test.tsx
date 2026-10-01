@@ -426,6 +426,55 @@ describe('limitations', () => {
   });
 });
 
+describe('rulings gallery', () => {
+  it('lists published rulings logged out, each linking to its ruling page', async () => {
+    const { default: RulingsPage } = await import('../app/rulings/page');
+    auth.current = freshAuth({ status: 'signedOut', user: undefined });
+    auth.current.api.listRulings.mockResolvedValue([
+      { caseId: 'demo-ba-a-354484', publishedAt: '2026-09-28T12:39:33.150Z', payeeShareBps: 10000, spreadBps: 0, humanReviewed: false, costUsd: 0.03931472, tokens: 14428 },
+      { caseId: 'c-c3ab6359', publishedAt: '2026-09-29T12:56:41.103Z', payeeShareBps: 2000, spreadBps: 0, humanReviewed: true },
+    ]);
+
+    render(<RulingsPage />);
+    const list = await screen.findByTestId('ruling-gallery');
+    const rows = within(list).getAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+
+    const [first, second] = rows;
+    expect(within(first).getByRole('link', { name: 'demo-ba-a-354484' })).toHaveAttribute('href', expect.stringMatching(/^\/ruling\/?\?id=demo-ba-a-354484$/));
+    expect(within(first).getByText('Claimant awarded in full')).toBeInTheDocument();
+    expect(within(first).getByText('Panel ruling')).toBeInTheDocument();
+    expect(within(first).getByText(/panel spread/)).toBeInTheDocument();
+    expect(within(first).getByText(/\$0\.0393/)).toBeInTheDocument();
+    expect(within(second).getByText('Human review')).toBeInTheDocument();
+    expect(within(second).getByText(/Claimant 20%/)).toBeInTheDocument();
+    // Signed out: no session was needed to load the list.
+    expect(auth.current.api.listRulings).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a retry when the list cannot be loaded', async () => {
+    const { default: RulingsPage } = await import('../app/rulings/page');
+    auth.current.api.listRulings.mockRejectedValueOnce(new ApiError(503, 'The Panch service had a problem (error 503). Please try again shortly.'));
+
+    render(<RulingsPage />);
+    expect(await screen.findByText('Could not load the rulings')).toBeInTheDocument();
+    expect(screen.getByText(/error 503/)).toBeInTheDocument();
+
+    auth.current.api.listRulings.mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Try again/ }));
+    expect(await screen.findByText('No rulings published yet')).toBeInTheDocument();
+  });
+
+  it('is reachable without a login from the header and the footer', async () => {
+    const { Footer } = await import('../components/Footer');
+    auth.current = freshAuth({ status: 'signedOut', user: undefined });
+    render(<><Header /><Footer /></>);
+    expect(screen.getByRole('link', { name: 'Rulings' })).toHaveAttribute('href', expect.stringMatching(/^\/rulings\/?$/));
+    expect(screen.getByRole('link', { name: 'Published rulings' })).toHaveAttribute('href', expect.stringMatching(/^\/rulings\/?$/));
+  });
+});
+
 describe('header', () => {
   it('signed out: sign in and get started', () => {
     auth.current = freshAuth({ status: 'signedOut', user: undefined });
