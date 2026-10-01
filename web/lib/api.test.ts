@@ -161,6 +161,27 @@ describe('public routes', () => {
     expect(await api.getRuling('c-104')).toEqual(ruling);
   });
 
+  it('lists published rulings without a token and drops rows that carry no case ID', async () => {
+    const { api, fetchImpl } = setup([
+      jsonResponse(200, [
+        { caseId: 'demo-ba-a-354484', publishedAt: '2026-09-28T12:39:33.150Z', payeeShareBps: 10000, spreadBps: 0, humanReviewed: false, costUsd: 0.03931472, tokens: 14428 },
+        { payeeShareBps: 10000 },
+        { caseId: 'c-c3ab6359', payeeShareBps: 2000, humanReviewed: true },
+      ]),
+    ], null);
+
+    expect(await api.listRulings()).toEqual([
+      { caseId: 'demo-ba-a-354484', publishedAt: '2026-09-28T12:39:33.150Z', payeeShareBps: 10000, spreadBps: 0, humanReviewed: false, costUsd: 0.03931472, tokens: 14428 },
+      { caseId: 'c-c3ab6359', publishedAt: undefined, payeeShareBps: 2000, spreadBps: undefined, humanReviewed: true, costUsd: undefined, tokens: undefined },
+    ]);
+    expect((fetchImpl.mock.calls[0][1]?.headers as Record<string, string> | undefined)?.Authorization).toBeUndefined();
+  });
+
+  it('refuses a ruling list that is not an array', async () => {
+    const { api } = setup([jsonResponse(200, { items: [] })]);
+    await expect(api.listRulings()).rejects.toMatchObject({ status: 502, message: expect.stringMatching(/unexpected ruling list/) });
+  });
+
   it('fails clearly when the API URL is not configured', async () => {
     const api = createApiClient({ baseUrl: '', getIdToken: async () => 't', fetchImpl: vi.fn() });
     await expect(api.health()).rejects.toMatchObject({ status: 0, message: expect.stringMatching(/NEXT_PUBLIC_API_URL/) });

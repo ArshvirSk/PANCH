@@ -11,6 +11,7 @@ import type {
   ReviewDecision,
   ReviewResult,
   Ruling,
+  RulingSummary,
   RulingVerification,
   Status,
   TimelineStage,
@@ -256,6 +257,33 @@ export function createApiClient(options: ApiClientOptions) {
     async submitCase(caseId: string): Promise<Status> {
       const body = asObject(await request(`${casePath(caseId)}/submit`, { method: 'POST', auth: true }));
       return (asString(body.status) ?? 'DELIBERATING') as Status;
+    },
+
+    /**
+     * Public, no login. Every published ruling, newest first (PRD ship gate:
+     * the gallery must be reachable logged out). Rows without a case ID are
+     * skipped rather than rendered as broken links.
+     */
+    async listRulings(): Promise<RulingSummary[]> {
+      const body = await request('rulings');
+      if (!Array.isArray(body)) {
+        throw new ApiError(502, 'The API returned an unexpected ruling list.');
+      }
+      return body.flatMap((item) => {
+        const row = asObject(item);
+        const caseId = asString(row.caseId);
+        if (!caseId) return [];
+        const summary: RulingSummary = {
+          caseId,
+          publishedAt: asString(row.publishedAt),
+          payeeShareBps: typeof row.payeeShareBps === 'number' ? row.payeeShareBps : 0,
+          spreadBps: typeof row.spreadBps === 'number' ? row.spreadBps : undefined,
+          humanReviewed: row.humanReviewed === true,
+          costUsd: typeof row.costUsd === 'number' ? row.costUsd : undefined,
+          tokens: typeof row.tokens === 'number' ? row.tokens : undefined,
+        };
+        return [summary];
+      });
     },
 
     /** Public. Returns null when no ruling has been published for this case. */

@@ -23,6 +23,26 @@ export type EvidenceType = EvidenceItem['type'];
  */
 export type Ruling = JudgeOutput & { humanReviewed?: boolean; fallback?: boolean };
 
+/**
+ * GET /rulings — one row per published ruling, straight from the Rulings table
+ * (services/api/rulings.ts getRulings), newest first. The gallery lists these;
+ * the ruling page fetches the full body separately. Rows carry no party
+ * identifiers, by design: published rulings are public and blind.
+ */
+export interface RulingSummary {
+  caseId: string;
+  publishedAt?: string;
+  /** Claimant's share of the award in basis points (10000 = 100%). */
+  payeeShareBps: number;
+  /** Panel spread in basis points; 0 when the three judges agreed exactly. */
+  spreadBps?: number;
+  /** True when a human reviewer settled the escalated case, not the panel. */
+  humanReviewed?: boolean;
+  /** Cost record written at publish time, present when the run used Bedrock. */
+  costUsd?: number;
+  tokens?: number;
+}
+
 /** GET /cases/{id}. The timeline fields arrive once the tribunal workflow is wired. */
 export interface CaseView {
   case: Case;

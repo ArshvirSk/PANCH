@@ -20,6 +20,7 @@ Measured cost: about **$0.03 per case**.
 | What | Where |
 |---|---|
 | Run a pre-seeded case through the real tribunal and watch the live timeline | Landing page → **Run demo case** |
+| Every published ruling, newest first | [Published rulings](https://main.d1hm3x5hny8fjb.amplifyapp.com/rulings/) |
 | A published ruling, with **Verify ruling** (recomputes the content hash and the ledger chain) | [Case A ruling](https://main.d1hm3x5hny8fjb.amplifyapp.com/ruling/?id=demo-ba-a-354484) |
 | The full flow: create a case, fund, dispute, upload evidence, submit | Sign up (email), then **My cases → New case** |
 | The human review queue for escalated cases | Sign in → **Reviews** |
@@ -255,6 +256,7 @@ The `web/` app covers everything above. It is a Next.js static export, hosted by
 | `/cases/new/` | Yes | Create a case as claimant (`POST /cases`) |
 | `/case/?id=` | Yes | Fund as respondent, dispute, upload evidence (drag and drop, presigned S3 PUT), submit, live polling while deliberating, ledger receipts. Fund, dispute and submit ask for confirmation |
 | `/ruling/?id=` | No | Public ruling as a formal award: split, confidence, reasoning (model markdown rendered safely), cited findings, clauses (`GET /rulings/{id}`), and **Verify ruling** (`GET /rulings/{id}/verify`: content hash and ledger chain, failures shown with the server's reason). Human-reviewed rulings say a reviewer decided; a failed demo's cached fallback is labelled *not a ruling* and shows no award |
+| `/rulings/` | No | The ruling gallery (ship gate): every published ruling from `GET /rulings`, newest first, with award, panel or human decider, spread and cost, each linking to its ruling page |
 | `/reviews/` | Yes | Human review queue for escalated cases: summary, amount, the three judges side by side, spread, swap test, and a form to settle the case (`GET /reviews`, `POST /reviews/{caseId}`) |
 | `/limitations/` | No | Known gaps in plain language, linked from the footer |
 
