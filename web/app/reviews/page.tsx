@@ -45,9 +45,15 @@ function describeSplit(review: ReviewCase, bps: number): string {
   return `Claimant receives ${bpsToPercent(bps)} (${formatMoney(claimantCents, review.currency)}), respondent ${bpsToPercent(10000 - bps)} (${formatMoney(respondentCents, review.currency)})`;
 }
 
-/** The ledger answers 400 "Case must be ESCALATED" when someone else already settled the case. */
+/**
+ * Someone else already settled the case: 400 "Case must be ESCALATED" when it had
+ * moved on before this request, 409 "Case already reviewed and settled" when two
+ * reviews race into the ledger.
+ */
 function isAlreadyResolved(err: unknown): boolean {
-  return err instanceof ApiError && (err.status === 400 || err.status === 409) && /escalated|transaction canceled|illegal transition|double-resolve/i.test(err.message);
+  if (!(err instanceof ApiError)) return false;
+  if (err.status === 409) return true;
+  return err.status === 400 && /escalated|transaction canceled|illegal transition|double-resolve/i.test(err.message);
 }
 
 /** Oldest first, so the queue is worked in the order cases arrived. */

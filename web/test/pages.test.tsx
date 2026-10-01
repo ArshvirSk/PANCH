@@ -191,6 +191,22 @@ describe('public ruling page', () => {
     expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
   });
 
+  it('says a human reviewer decided a human-reviewed ruling, without a panel confidence', async () => {
+    await show({ ...RULING, payeeShareBps: 6000, findingsOfFact: [], clausesRelied: [], reasoning: 'Late but used (e-3).', confidence: 1, humanReviewed: true });
+    await screen.findByTestId('ruling');
+    expect(screen.getByTestId('decided-by')).toHaveTextContent('Split award. Decided by a human reviewer after the panel of three judges escalated the case.');
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Reviewer's reasons/ })).toBeInTheDocument();
+    expect(screen.getByText('Late but used (e-3).')).toBeInTheDocument();
+  });
+
+  it('keeps the panel wording and confidence for an AI ruling', async () => {
+    await show(RULING);
+    await screen.findByTestId('ruling');
+    expect(screen.getByTestId('decided-by')).toHaveTextContent('Decided by a blinded panel of three judges and a presiding judge.');
+    expect(screen.getByRole('heading', { name: /Reasoning/ })).toBeInTheDocument();
+  });
+
   it('not published → friendly empty state', async () => {
     await show(null, 'c-new');
     expect(await screen.findByText('No published ruling yet')).toBeInTheDocument();

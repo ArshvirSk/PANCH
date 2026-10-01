@@ -604,3 +604,36 @@ comments to follow as they open (their lanes are still in progress).
 Gateway stage, DynamoDB items, Budgets API, CloudWatch alarms, SNS topic,
 Lambda config/logs, Rulings scan); `npm test` 409/409 green; docs-only
 change, no deploy needed.
+
+## Phase 22 — live verification of /reviews and ruling verify against real data (Piyush/agent, branch `p/fix/reviews-real-data`, 2026-09-29)
+Verification pass after Phase 14/17, signed in on the deployed site as the synthetic test reviewer.
+
+**Review queue, real data (`https://main.d1hm3x5hny8fjb.amplifyapp.com/reviews/`):**
+- `GET /reviews` returned 9 ESCALATED cases. For every case, every value on screen matched the raw API response: judge awards, confidences, findings/clauses/uncertainty counts, median, spread, and each per-judge swap line. Judges are shown in order, judge-1 to judge-3, even though the API sends them out of order.
+- No fallback path triggered wrongly. None of these appeared: "judges not sent", "output could not be read", "worked out from the awards", or "—" placeholders.
+- The shapes match the UI reader: `panelOutputs.judges` and `swapOutputs` keyed by judge name, `aggregate` nested, `recoveredFromHistory` on legacy rows.
+- `demo-df4844b8` shows judge 1 "Shifted · mirrored 100%, off by 50 pts" and judges 2 and 3 "Consistent".
+- The 4 legacy rows (`recoveredFromHistory: true`, empty `swapOutputs`) show "No swap-test run for this judge." as muted text, not an error.
+- "No written summary was sent with this case" shows on all 9, which is correct: the case model has no summary field.
+
+**One real decision through the UI:** `c-c3ab6359` at 20% with a note. The results:
+- `POST /reviews/c-c3ab6359` returned `200 { status: SETTLED, published: true, entryHash }`, and the case left the queue.
+- `GET /rulings/c-c3ab6359` serves `payeeShareBps: 2000`, `humanReviewed: true`, and the note as `reasoning`. The content hash matches in `/verify`.
+- A second decision from a tab holding the pre-decision queue hit the real API and got `400 "Case must be ESCALATED"`. The page showed "already resolved by someone else, so nothing was changed" and refreshed the queue.
+
+**Mismatches found and fixed (web only):**
+1. The race answer `409 "Case already reviewed and settled"` (`postReview`) was not recognised as a conflict. The UI matched only the 400 wording, so a race showed as a form error. Any 409 is now treated as already resolved. There is a new test, and removing the fix makes it fail.
+2. The ruling page showed a human decision as the panel's ("Decided by a blinded panel of three judges and a presiding judge", "Panel confidence 100%"), because it ignored `humanReviewed`. It now says a human reviewer decided, hides the fixed `confidence: 1` meter, and titles the reasoning "Reviewer's reasons". I confirmed this against the live `c-c3ab6359` ruling with a local build pointed at the production API. AI rulings are unchanged.
+
+**Ruling verification:**
+- `GET /rulings/demo-9bfae5c6/verify` returns `match: true`, with the content hash matched and the chain valid.
+- For the escalated `demo-df4844b8`, both `/rulings/{id}` and `/verify` return 404. The ruling page shows "No published ruling yet" rather than an error.
+- The frontend has **no verification page**: nothing calls `/verify`. Building one would be a new feature, so none was added.
+
+**Backend bug found (Arshvir's area, reported, not changed):**
+- `/verify` on `c-c3ab6359` returns `match: false`, "Ledger chain failed to recompute": entry 2, DISPUTE, is invalid.
+- `services/api/cases.ts:67` writes DISPUTE with `seq: 2, prevHash: 'GENESIS'` instead of chaining onto the FUND entry's hash.
+- So every real case that goes through fund and dispute fails `/verify`, whether the AI or a human settles it. Demo cases skip those steps, which is why they verify.
+- The review's own RESOLVE/RELEASE entries (3 and 4) are valid and chain correctly.
+
+**Checks run:** web tests 414 (5 new), lint, typecheck, `next build`.

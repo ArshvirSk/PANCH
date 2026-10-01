@@ -76,6 +76,7 @@ function RulingView({ caseId }: { caseId: string }) {
   const claimantShare = r.payeeShareBps;
   const respondentShare = 10000 - claimantShare;
   const outcome = claimantShare === 10000 ? 'Award in full to the claimant' : claimantShare === 0 ? 'Claim dismissed in full' : 'Split award';
+  const human = r.humanReviewed === true;
 
   return (
     <article className="award" data-testid="ruling">
@@ -84,7 +85,7 @@ function RulingView({ caseId }: { caseId: string }) {
         <div className="award-title">
           <p className="eyebrow">Arbitral award · Panch tribunal</p>
           <h1>Case <span className="mono">{caseId}</span></h1>
-          <p className="muted">{outcome}. Decided by a blinded panel of three judges and a presiding judge.</p>
+          <p className="muted" data-testid="decided-by">{outcome}. {human ? 'Decided by a human reviewer after the panel of three judges escalated the case.' : 'Decided by a blinded panel of three judges and a presiding judge.'}</p>
         </div>
         <div className="award-actions no-print">
           <CopyButton value={typeof window !== 'undefined' ? window.location.href : ''} label="Copy link" />
@@ -114,11 +115,12 @@ function RulingView({ caseId }: { caseId: string }) {
           {claimantShare > 0 && <span className="split-claimant" style={{ width: `${claimantShare / 100}%` }} />}
           {respondentShare > 0 && <span className="split-respondent" style={{ width: `${respondentShare / 100}%` }} />}
         </div>
-        <ConfidenceMeter value={r.confidence} />
+        {/* A human decision carries a fixed confidence of 1, which is not a panel measurement. */}
+        {!human && <ConfidenceMeter value={r.confidence} />}
       </section>
 
       <section className="award-section" aria-labelledby="reasoning-title">
-        <h2 id="reasoning-title"><span className="numeral">I.</span> Reasoning</h2>
+        <h2 id="reasoning-title"><span className="numeral">I.</span> {human ? "Reviewer's reasons" : 'Reasoning'}</h2>
         <p className="prose">{r.reasoning}</p>
       </section>
 
